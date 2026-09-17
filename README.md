@@ -104,7 +104,7 @@ npm start  # downloads Camoufox on first run (~300MB)
 
 Default port is `9377`. See [Environment Variables](#environment-variables) for all options.
 
-MCP support is included in the default package installation. Start the REST service once with `npm start`, then configure your MCP host to spawn `camofox-browser-mcp` (or run `npm run mcp` from this checkout). The adapter communicates over stdio and connects to `http://localhost:9377` by default; see [`mcp/README.md`](mcp/README.md) for host-specific configuration.
+MCP support is included in the default runtime. `npm start` launches the Bun control plane, browser core, Streamable HTTP MCP endpoint at `http://localhost:9377/mcp`, and the browser Control Room at `http://localhost:6080`. The separately installable stdio adapter remains available for clients that only support local child-process MCP; see [`mcp/README.md`](mcp/README.md).
 
 > **Note:** the postinstall script unsets `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` for itself before fetching the Camoufox binary. Without that override, an exported `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` (common when Playwright is configured to use system Chrome) would silently skip the binary download and crash the server at runtime.
 >
@@ -114,11 +114,25 @@ MCP support is included in the default package installation. Start the REST serv
 
 ### Docker
 
-The included `Makefile` auto-detects your CPU architecture and pre-downloads Camoufox + yt-dlp binaries outside the Docker build, so rebuilds are fast (~30s vs ~3min). The project supports Linux and macOS; production containers use Linux.
+The image is self-contained: Bun runs the TypeScript gateway and dashboard, while Camoufox, Xvfb, uBlock Origin, persistence, and the browser API run in the same container. Only two ports are public:
+
+- `9377`: MCP at `/mcp`, plus the backward-compatible REST API
+- `6080`: live Control Room showing every active session and tab
 
 ```bash
-# Build and start (auto-detects arch: aarch64 on M1/M2, x86_64 on Intel)
+# Easiest: build and run the one-container stack
+docker compose up --build -d
+
+# Build and start (auto-detects Apple Silicon/ARM64 and x86_64)
 make up
+
+# Or directly
+docker build -t camofox-browser .
+docker run --rm --shm-size=2g \
+  -p 9377:9377 -p 6080:6080 \
+  -e CAMOFOX_ACCESS_KEY="change-me" \
+  -v camofox-data:/root/.camofox \
+  camofox-browser
 
 # Stop and remove the container
 make down
@@ -126,23 +140,20 @@ make down
 # Force a clean rebuild (e.g. after upgrading VERSION/RELEASE)
 make reset
 
-# Just download binaries (without building)
-make fetch
-
 # Override arch or version explicitly
 make up ARCH=x86_64
-make up VERSION=135.0.1 RELEASE=beta.24
+make up VERSION=152.0.4 RELEASE=beta.28
 ```
 
-> **WARNING: Do not run `docker build` directly.** The Dockerfile uses bind mounts to pull pre-downloaded binaries from `dist/`. Always use `make up` (or `make fetch` then `make build`) -- it downloads the binaries first.
+Set `CAMOFOX_ACCESS_KEY` before exposing either port outside a trusted machine. The same bearer key protects MCP, REST, and dashboard API traffic. The dashboard asks for it in the “Access key” dialog and stores it in browser local storage.
 
 ### Fly.io
 
-For Fly.io or other remote CI, you'll need a Dockerfile that downloads binaries at build time instead of using bind mounts.
+`Dockerfile.ci` provides the same two-port Bun runtime for builders that set `TARGETARCH` automatically.
 
 ### Railway
 
-A `railway.toml` is included. It uses `Dockerfile.ci` (which downloads binaries at build time) and maps Railway's `PORT` env var to `CAMOFOX_PORT` automatically.
+A `railway.toml` is included. It uses `Dockerfile.ci` and maps Railway's `PORT` env var to the MCP/API gateway automatically. Railway exposes one public service port; deploy the dashboard separately or use a provider that supports mapping both container ports when remote dashboard access is required.
 
 ```bash
 # Install Railway CLI, then:
@@ -602,9 +613,11 @@ Camoufox launches the full Firefox uBlock Origin extension by default. Camofox a
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CAMOFOX_PORT` | Server port | `9377` |
-| `PORT` | Server port (fallback, for platforms like Fly.io, Railway) | `9377` |
-| `CAMOFOX_BIND_HOST` | Optional server bind host. Set to `127.0.0.1` for loopback-only access or `0.0.0.0` for IPv4 on all interfaces. When unset, Node uses its default all-interface binding. | - |
+| `CAMOFOX_MCP_PORT` | Public MCP and backward-compatible REST gateway port | `9377` |
+| `CAMOFOX_WEB_PORT` | Public browser Control Room port | `6080` |
+| `CAMOFOX_INTERNAL_PORT` | Loopback-only browser core port inside the container/process group | `9378` |
+| `PORT` | MCP gateway port fallback for platforms like Railway | `9377` |
+| `CAMOFOX_BIND_HOST` | Bind host for both public Bun servers | `0.0.0.0` |
 | `CAMOFOX_API_KEY` | Enable cookie import endpoint (disabled if unset) | - |
 | `CAMOFOX_ADMIN_KEY` | Required for `POST /stop` | - |
 | `CAMOFOX_ACCESS_KEY` | If set, all routes (except `/health`, cookie import, and `/stop`) require `Authorization: Bearer <key>`. Lets you safely expose the server beyond loopback. | - |
@@ -629,7 +642,6 @@ Camoufox launches the full Firefox uBlock Origin extension by default. Camofox a
 | `CAMOFOX_INTERACTIVE` | Interactive browser mode: `desktop` opens a real local Camoufox window; `off` keeps normal headless behavior | `off` |
 | `HANDLER_TIMEOUT_MS` | Max time for any handler | `30000` (30s) |
 | `MAX_CONCURRENT_PER_USER` | Concurrent request cap per user | `3` |
-| `MAX_OLD_SPACE_SIZE` | Node.js V8 heap limit (MB) | `128` |
 | `PROXY_STRATEGY` | Proxy mode: `backconnect` (rotating sticky sessions) or blank (single endpoint) | - |
 | `PROXY_PROTOCOL` | Proxy protocol: `http`, `https`, `socks4`, or `socks5`. | `http` |
 | `PROXY_PROVIDER` | Provider name for session format (e.g. `decodo`) | `decodo` |
@@ -646,7 +658,7 @@ Camoufox launches the full Firefox uBlock Origin extension by default. Camofox a
 | `CAMOFOX_CRASH_REPORT_URL` | Telemetry endpoint ([self-hosted endpoint](#self-hosted-telemetry-endpoint)) | `https://camofox-telemetry.askjo.workers.dev/report` |
 | `CAMOFOX_CRASH_REPORT_REPO` | GitHub repo for telemetry issues | `jo-inc/camofox-browser` |
 | `CAMOFOX_CRASH_REPORT_RATE_LIMIT` | Max telemetry reports per hour | `10` |
-| `ENABLE_VNC` | Enable VNC plugin for interactive browser access (`1`) | - |
+| `ENABLE_VNC` | Enable the legacy noVNC plugin (normally unnecessary with the Control Room) | - |
 | `VNC_PASSWORD` | Password for VNC access (recommended in production) | - |
 | `NOVNC_PORT` | noVNC web UI port | `6080` |
 

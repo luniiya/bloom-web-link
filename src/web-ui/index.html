@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Camofox Control Room</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">CAMOFOX / LIVE</p>
+        <h1>Control Room</h1>
+      </div>
+      <div class="status-wrap">
+        <span id="status-dot" class="status-dot"></span>
+        <span id="status">Connecting…</span>
+        <button id="auth-button" type="button">Access key</button>
+      </div>
+    </header>
+    <main>
+      <section class="summary" aria-live="polite">
+        <div><strong id="session-count">0</strong><span>sessions</span></div>
+        <div><strong id="tab-count">0</strong><span>live tabs</span></div>
+        <div><strong id="updated">—</strong><span>last sync</span></div>
+      </section>
+      <section id="empty" class="empty">
+        <span class="fox">◢</span>
+        <h2>No tabs yet</h2>
+        <p>Connect an MCP client to <code>/mcp</code>. New agent tabs will appear here automatically.</p>
+      </section>
+      <section id="grid" class="grid" aria-label="Open browser tabs"></section>
+    </main>
+    <template id="tab-template">
+      <article class="tab-card">
+        <div class="tab-meta">
+          <div class="favicon">●</div>
+          <div class="titles"><h2></h2><p class="url"></p></div>
+          <span class="session-pill"></span>
+        </div>
+        <button class="screen" type="button" title="Click to interact at this position">
+          <img alt="Live browser tab screenshot" />
+          <span class="loading">Loading view…</span>
+        </button>
+        <div class="tab-footer"><span class="user"></span><span class="hint">click the page to interact</span></div>
+      </article>
+    </template>
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>

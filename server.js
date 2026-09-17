@@ -6276,6 +6276,74 @@ app.get('/', (req, res) => {
   });
 });
 
+/**
+ * @openapi
+ * /dashboard/state:
+ *   get:
+ *     tags: [Browser]
+ *     summary: Get dashboard browser state
+ *     description: Returns all active sessions and tabs for the local container dashboard. This route is protected by the global access key when configured.
+ *     responses:
+ *       200:
+ *         description: Current browser, session, and tab state.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 running:
+ *                   type: boolean
+ *                 generatedAt:
+ *                   type: string
+ *                   format: date-time
+ *                 sessions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       userId:
+ *                         type: string
+ *                       lastAccess:
+ *                         type: string
+ *                         format: date-time
+ *                       tabs:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             tabId:
+ *                               type: string
+ *                             sessionKey:
+ *                               type: string
+ *                             url:
+ *                               type: string
+ *                             title:
+ *                               type: string
+ */
+app.get('/dashboard/state', async (_req, res) => {
+  const dashboardSessions = [];
+  for (const [userId, session] of sessions) {
+    const tabs = [];
+    for (const [sessionKey, group] of session.tabGroups) {
+      for (const [tabId, tabState] of group) {
+        tabs.push({
+          tabId,
+          sessionKey,
+          url: safePageUrl(tabState.page),
+          title: await tabState.page.title().catch(() => ''),
+        });
+      }
+    }
+    dashboardSessions.push({
+      userId,
+      lastAccess: new Date(session.lastAccess).toISOString(),
+      tabs,
+    });
+  }
+  const running = browser !== null && (browser.isConnected?.() ?? false);
+  res.json({ running, generatedAt: new Date().toISOString(), sessions: dashboardSessions });
+});
+
 // GET /tabs - List all tabs (OpenClaw expects this)
 /**
  * @openapi

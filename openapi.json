@@ -2901,6 +2901,71 @@
         }
       }
     },
+    "/dashboard/state": {
+      "get": {
+        "tags": [
+          "Browser"
+        ],
+        "summary": "Get dashboard browser state",
+        "description": "Returns all active sessions and tabs for the local container dashboard. This route is protected by the global access key when configured.",
+        "responses": {
+          "200": {
+            "description": "Current browser, session, and tab state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "running": {
+                      "type": "boolean"
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "sessions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "lastAccess": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "tabs": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "tabId": {
+                                  "type": "string"
+                                },
+                                "sessionKey": {
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tabs/open": {
       "post": {
         "tags": [

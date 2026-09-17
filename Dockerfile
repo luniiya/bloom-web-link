@@ -1,14 +1,21 @@
+# Bun runs the TypeScript control plane and the browser core. Keep the Debian
+# Trixie userspace because the native persistence dependency requires modern glibc.
+FROM oven/bun:1.4.0 AS bun-runtime
+
 # Trixie (glibc 2.41), not bookworm (2.36): better-sqlite3 ships an arm64 prebuild
 # linked against GLIBC_2.38, so on bookworm it loads and then dies at runtime with
 # "version `GLIBC_2.38' not found" the first time a tab is opened. amd64 is
 # unaffected because that prebuild targets an older glibc.
 FROM node:22-trixie-slim AS camofox-browser
 
+COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
+
 # Pinned Camoufox version for reproducible builds
 # Update these when upgrading Camoufox
 ARG CAMOUFOX_VERSION=152.0.4
 ARG CAMOUFOX_RELEASE=beta.28
-ARG ARCH=x86_64
+ARG ARCH
+ARG TARGETARCH
 ARG YT_DLP_VERSION=2026.08.19
 ARG YT_DLP_SHA256=1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6
 
@@ -55,8 +62,13 @@ RUN apt-get update && apt-get install -y \
 # build dies three commands later on "unzip: cannot find zipfile directory", which
 # points at the archive rather than at the URL that was actually wrong. Note the Linux
 # arm asset is named lin.arm64.zip -- pass --build-arg ARCH=arm64, not aarch64.
-RUN mkdir -p /root/.cache/camoufox \
-    && curl -fL -o /tmp/camoufox.zip "https://github.com/daijro/camoufox/releases/download/v${CAMOUFOX_VERSION}-${CAMOUFOX_RELEASE}/camoufox-${CAMOUFOX_VERSION}-${CAMOUFOX_RELEASE}-lin.${ARCH}.zip" \
+RUN case "${ARCH:-$TARGETARCH}" in \
+      x86_64|amd64) CAMOUFOX_ARCH=x86_64 ;; \
+      arm64|aarch64) CAMOUFOX_ARCH=arm64 ;; \
+      *) echo "Unsupported architecture: ${ARCH:-$TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && mkdir -p /root/.cache/camoufox \
+    && curl -fL -o /tmp/camoufox.zip "https://github.com/daijro/camoufox/releases/download/v${CAMOUFOX_VERSION}-${CAMOUFOX_RELEASE}/camoufox-${CAMOUFOX_VERSION}-${CAMOUFOX_RELEASE}-lin.${CAMOUFOX_ARCH}.zip" \
     && (unzip -q /tmp/camoufox.zip -d /root/.cache/camoufox || true) \
     && rm /tmp/camoufox.zip \
     && chmod -R 755 /root/.cache/camoufox \
@@ -83,6 +95,7 @@ RUN apt-get update \
 COPY server.js ./
 COPY camofox.config.json ./
 COPY lib/ ./lib/
+COPY src/ ./src/
 # lib/cookies.js is a compatibility re-export from ../mcp/lib/cookies.mjs, so mcp/
 # must ship even though the MCP server itself is not run here. Without it the
 # persistence plugin dies at load with ERR_MODULE_NOT_FOUND, the server starts
@@ -96,11 +109,13 @@ COPY scripts/ ./scripts/
 RUN sh scripts/install-plugin-deps.sh
 
 ENV NODE_ENV=production
-ENV CAMOFOX_PORT=9377
+ENV CAMOFOX_MCP_PORT=9377
+ENV CAMOFOX_WEB_PORT=6080
+ENV CAMOFOX_INTERNAL_PORT=9378
 
-EXPOSE 9377
+EXPOSE 9377 6080
 
-CMD ["sh", "-c", "node --max-old-space-size=${MAX_OLD_SPACE_SIZE:-128} server.js"]
+CMD ["bun", "run", "src/index.ts"]
 
 # Optional: rebuild plugin deps after adding third-party plugins
 # Usage: docker build --target with-plugins -t camofox-browser .

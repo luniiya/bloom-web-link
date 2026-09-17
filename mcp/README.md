@@ -6,6 +6,18 @@ It mirrors the existing OpenClaw plugin **1:1**: same 13 tool names, identical J
 
 The initial MCP server implementation was contributed by [@epicsagas](https://github.com/epicsagas).
 
+## Container-native HTTP MCP
+
+The default Docker image also exposes stateful Streamable HTTP MCP directly:
+
+```text
+http://localhost:9377/mcp
+```
+
+Each initialized MCP connection receives an isolated Camofox browser context. Clients may send `X-Camofox-User-Id` during initialization to choose a stable user ID; otherwise the server generates one. If `CAMOFOX_ACCESS_KEY` is configured, send it as `Authorization: Bearer <key>`.
+
+Use the stdio adapter documented below only when the MCP host cannot connect to a remote Streamable HTTP endpoint.
+
 ## Architecture
 
 The MCP server is a thin stdio client over the camofox REST server. Two pieces:

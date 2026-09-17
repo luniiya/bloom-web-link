@@ -32,7 +32,8 @@
     "transcript"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "bun": ">=1.2.0"
   },
   "os": [
     "linux",
@@ -40,6 +41,7 @@
   ],
   "files": [
     "server.js",
+    "src/",
     "lib/",
     "plugins/",
     "camofox.config.json",
@@ -53,6 +55,8 @@
     "scripts/",
     "run.sh",
     "Dockerfile",
+    "Dockerfile.ci",
+    "compose.yaml",
     "README.md",
     "LICENSE",
     "AGENTS.md",
@@ -131,9 +135,12 @@
   "scripts": {
     "build": "tsc -p . || true; mkdir -p dist && cp plugin.js dist/plugin.js",
     "prepublishOnly": "npm run build",
-    "start": "node server.js",
+    "start": "bun run src/index.ts",
+    "start:core": "bun run server.js",
     "mcp": "node mcp/server.mjs",
+    "typecheck:container": "tsc --noEmit -p tsconfig.container.json",
     "test:mcp": "npm ci --prefix mcp && node scripts/test-mcp.mjs && node scripts/test-mcp-package.mjs",
+    "test:container": "bun run typecheck:container && bun run scripts/test-container.ts",
     "test:unit": "NODE_OPTIONS='--experimental-vm-modules' jest --runInBand --forceExit tests/unit",
     "test": "npm run test:unit && npm run test:e2e && npm run test:plugins",
     "test:e2e": "NODE_OPTIONS='--experimental-vm-modules' jest --config jest.config.e2e.cjs --runInBand --forceExit",
