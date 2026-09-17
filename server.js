@@ -42,7 +42,7 @@ import { cleanupOrphanedTempFiles, cleanupStaleFirefoxProfiles, removeXvfbDispla
 import { coalesceInflight } from './lib/inflight.js';
 import { INTERACTIVE_ROLES } from './lib/interactive-roles.js';
 import { selectOption } from './lib/select-option.js';
-import { visibleSelectorCandidate } from './lib/visible-selector.js';
+import { clickLocator } from './lib/pointer.js';
 import { normalizeBrowserKey } from './lib/browser-key.js';
 import { createPageWithSessionRecovery } from './lib/new-page-recovery.js';
 import { resolveUploadPaths } from './lib/upload-paths.js';
@@ -54,7 +54,8 @@ import { prepareExternalCamoufoxExecutable } from './lib/camoufox-executable.js'
 import { createVirtualDisplayRegistry } from './lib/plugin-capabilities.js';
 import { killProcessIds } from './lib/browser-processes.js';
 import { snapshotOwnedBrowserProcesses, survivingOwnedBrowserProcesses, profilePathsFromProcessSnapshot } from './lib/process-ownership.js';
-import { killWindowsProcessTree, refreshWindowsProcesses } from './lib/windows-processes.js';
+import { COOKIE_BANNER_FIREFOX_PREFS, dismissConsentDialogs as dismissKnownConsentDialogs } from './lib/consent.js';
+import { createPageReady } from './lib/page-ready.js';
 import {
   safePageUrl, urlDomain, hashIdentifier,
   isDeadContextError, isPageCrashedError, isTimeoutError,
@@ -663,8 +664,8 @@ async function safePageClose(page) {
 function getHostOS() {
   const platform = os.platform();
   if (platform === 'darwin') return 'macos';
-  if (platform === 'win32') return 'windows';
-  return 'linux';
+  if (platform === 'linux') return 'linux';
+  throw new Error(`Unsupported platform: ${platform}. camofox-browser supports Linux and macOS.`);
 }
 
 // Proxy strategy for outbound browsing.
@@ -989,7 +990,7 @@ async function _closeBrowserFullyImpl(reason) {
 
   // Force-kill only survivors captured before this close began.
   if (pid) {
-    await _forceKillProcessTree(pid, reason, ownedBrowserProcesses);
+    await _forceKillProcessTree(pid, reason);
   }
   await _forceKillBrowserProcesses(reason, ownedBrowserProcesses);
 
@@ -1028,17 +1029,8 @@ async function _closeBrowserFullyImpl(reason) {
  * (SIGKILL -pid). Orphan cleanup is deliberately left to the ownership
  * snapshot captured before browser.close(), below.
  */
-async function _forceKillProcessTree(pid, reason, ownedBrowserProcesses = []) {
+async function _forceKillProcessTree(pid, reason) {
   if (!pid || pid <= 1) return;
-
-  if (process.platform === 'win32') {
-    const rootSnapshot = ownedBrowserProcesses.find((proc) => proc.pid === pid);
-    if (rootSnapshot && killWindowsProcessTree(pid, { expectedStartTime: rootSnapshot.startTime })) {
-      log('info', 'killed browser process tree', { pid, reason });
-    }
-    await new Promise(r => setTimeout(r, 500));
-    return;
-  }
 
   // Kill the specific browser process first (positive PID = single process)
   try {
@@ -1072,7 +1064,7 @@ async function _forceKillBrowserProcesses(reason, ownedBrowserProcesses = []) {
     const victims = survivors.map(proc => proc.pid);
     if (victims.length > 0) {
       log('warn', 'killing browser survivor processes', { reason, victims });
-      await killProcessIds(victims, { signal: 'SIGKILL', delayMs: 300, processSnapshots: survivors });
+      await killProcessIds(victims, { signal: 'SIGKILL', delayMs: 300 });
     }
   } catch (err) {
     log('warn', 'failed to scan for browser survivor processes', { reason, error: err.message });
@@ -1170,6 +1162,7 @@ async function launchBrowserInstance() {
         locale: launchLocale({ hasProxy: !!proxyPool, directIdentity: CONFIG.directIdentity }),
         virtual_display: vdDisplay,
         exclude_addons: CONFIG.disableDefaultAddons ? ['UBO'] : undefined,
+        firefox_user_prefs: CONFIG.cookieBannerHandlingEnabled ? COOKIE_BANNER_FIREFOX_PREFS : undefined,
       }, {
         attempt,
         proxyServer: launchProxy?.server || null,
@@ -2062,86 +2055,8 @@ async function navigatePage(page, url, { timeout = 30000 } = {}) {
 
 
 
-async function waitForPageReady(page, options = {}) {
-  const {
-    timeout = 10000,
-    waitForNetwork = true,
-    waitForHydration = true,
-    settleMs = 200,
-    hydrationPollMs = 250,
-    hydrationTimeoutMs = Math.min(timeout, 10000),
-    dismissConsent = false,
-  } = options;
-  
-  try {
-    await page.waitForLoadState('domcontentloaded', { timeout });
-    
-    if (waitForNetwork) {
-      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {
-        log('warn', 'networkidle timeout, continuing');
-      });
-    }
-    
-    if (waitForHydration) {
-      const maxIterations = Math.max(1, Math.floor(hydrationTimeoutMs / hydrationPollMs));
-      await page.evaluate(async ({ maxIterations, hydrationPollMs }) => {
-        for (let i = 0; i < maxIterations; i++) {
-          const entries = performance.getEntriesByType('resource');
-          const recentEntries = entries.slice(-5);
-          const netQuiet = recentEntries.every(e => (performance.now() - e.responseEnd) > 400);
-          
-          if (document.readyState === 'complete' && netQuiet) {
-            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-            break;
-          }
-          await new Promise(r => setTimeout(r, hydrationPollMs));
-        }
-      }, { maxIterations, hydrationPollMs }).catch(() => {
-        log('warn', 'hydration wait failed, continuing');
-      });
-    }
-    
-    if (settleMs > 0) {
-      await page.waitForTimeout(settleMs);
-    }
-    
-    if (dismissConsent) {
-      await dismissConsentDialogs(page);
-    }
-    
-    return true;
-  } catch (err) {
-    log('warn', 'page ready failed', { error: err.message });
-    return false;
-  }
-}
-
-async function dismissConsentDialogs(page) {
-  // Restrict this opt-in behavior to consent-manager controls. Broad dialog,
-  // modal, and aria-label selectors can close application UI unrelated to consent.
-  const dismissSelectors = [
-    '#onetrust-banner-sdk #onetrust-accept-btn-handler',
-    '#onetrust-banner-sdk #onetrust-reject-all-handler',
-    '#onetrust-banner-sdk #onetrust-close-btn-container button',
-    '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
-    '#CybotCookiebotDialogBodyButtonDecline',
-    '#qc-cmp2-ui button[mode="primary"]',
-  ];
-  
-  for (const selector of dismissSelectors) {
-    try {
-      const button = page.locator(selector).first();
-      if (await button.isVisible({ timeout: 100 })) {
-        await button.click({ timeout: 1000 }).catch(() => {});
-        log('info', 'dismissed consent dialog', { selector });
-        await page.waitForTimeout(300); // Brief pause after dismiss
-        break; // Only dismiss one dialog per page load
-      }
-    } catch (e) {
-      // Selector not found or not clickable, continue
-    }
-  }
-}
+const waitForPageReady = createPageReady({ log });
+const dismissConsentDialogs = page => dismissKnownConsentDialogs(page, { log });
 
 // --- Google SERP detection ---
 function isGoogleSerp(url) {
@@ -3683,7 +3598,7 @@ app.get('/tabs/:tabId/snapshot', async (req, res) => {
  * /tabs/{tabId}/wait:
  *   post:
  *     tags: [Interaction]
- *     summary: Wait for a selector or timeout
+ *     summary: Wait for page readiness or a page condition
  *     parameters:
  *       - name: tabId
  *         in: path
@@ -3702,9 +3617,26 @@ app.get('/tabs/:tabId/snapshot', async (req, res) => {
  *                 type: string
  *               selector:
  *                 type: string
+ *                 description: CSS selector to wait for.
+ *               text:
+ *                 type: string
+ *                 description: Visible text to wait for.
+ *               url:
+ *                 type: string
+ *                 description: URL or Playwright glob pattern to wait for.
+ *               state:
+ *                 type: string
+ *                 enum: [attached, detached, visible, hidden]
+ *                 default: visible
  *               timeout:
  *                 type: integer
  *                 description: Max wait in ms.
+ *               waitForNetwork:
+ *                 type: boolean
+ *                 default: true
+ *               dismissConsent:
+ *                 type: boolean
+ *                 default: false
  *     responses:
  *       200:
  *         description: Wait completed.
@@ -3724,16 +3656,59 @@ app.get('/tabs/:tabId/snapshot', async (req, res) => {
  */
 app.post('/tabs/:tabId/wait', async (req, res) => {
   try {
-    const { userId, timeout = 10000, waitForNetwork = true, dismissConsent = false } = req.body;
+    const {
+      userId, selector, text, url, state = 'visible',
+      timeout = 10000, waitForNetwork = true, dismissConsent = false,
+    } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+    const conditions = [selector, text, url].filter(value => typeof value === 'string' && value.length > 0);
+    if (conditions.length > 1) {
+      return res.status(400).json({ error: 'provide only one of selector, text, or url' });
+    }
+    if (!['attached', 'detached', 'visible', 'hidden'].includes(state)) {
+      return res.status(400).json({ error: 'state must be attached, detached, visible, or hidden' });
+    }
+    const selectorErr = selectorValidationError(selector);
+    if (selectorErr) throw invalidSelectorError(selectorErr);
+    const parsedTimeout = Number(timeout);
+    if (!Number.isFinite(parsedTimeout) || parsedTimeout <= 0) {
+      return res.status(400).json({ error: 'timeout must be a positive number' });
+    }
+    const effectiveTimeout = Math.min(parsedTimeout, HANDLER_TIMEOUT_MS - 1000);
     const session = sessions.get(normalizeUserId(userId));
     const found = session && findTab(session, req.params.tabId);
     if (!found) return tabNotFoundResponse(res, req.params.tabId || req.body?.tabId);
     session.lastAccess = Date.now();
     
     const { tabState } = found;
-    const ready = await waitForPageReady(tabState.page, { timeout, waitForNetwork, dismissConsent });
+    tabState.toolCalls++; tabState.consecutiveTimeouts = 0; tabState.consecutiveFailures = 0;
+    const startedAt = Date.now();
+    const ready = await withUserLimit(userId, () => withTabLock(req.params.tabId, async () => {
+      let condition = 'page';
+      if (selector) {
+        await tabState.page.locator(selector).first().waitFor({ state, timeout: effectiveTimeout });
+        condition = 'selector';
+      } else if (text) {
+        await tabState.page.getByText(text, { exact: false }).first().waitFor({ state, timeout: effectiveTimeout });
+        condition = 'text';
+      } else if (url) {
+        await tabState.page.waitForURL(url, { waitUntil: 'domcontentloaded', timeout: effectiveTimeout });
+        condition = 'url';
+      } else {
+        await waitForPageReady(tabState.page, { timeout: effectiveTimeout, waitForNetwork, dismissConsent });
+      }
+
+      let networkIdle = false;
+      if (condition !== 'page' && waitForNetwork) {
+        const remaining = Math.max(1, effectiveTimeout - (Date.now() - startedAt));
+        networkIdle = await tabState.page.waitForLoadState('networkidle', { timeout: Math.min(5000, remaining) })
+          .then(() => true, () => false);
+      }
+      if (condition !== 'page' && dismissConsent) await dismissConsentDialogs(tabState.page);
+      return { condition, state, networkIdle, elapsedMs: Date.now() - startedAt };
+    }, effectiveTimeout + 500));
     
-    res.json({ ok: true, ready });
+    res.json({ ok: true, ready, url: tabState.page.url() });
   } catch (err) {
     log('error', 'wait failed', { reqId: req.reqId, error: err.message });
     handleRouteError(err, req, res);
@@ -3809,7 +3784,7 @@ app.post('/tabs/:tabId/click', async (req, res) => {
   const tabId = req.params.tabId;
   
   try {
-    const { userId, ref, selector } = req.body;
+    const { userId, ref, selector, coordinates, doubleClick = false } = req.body;
     if (!userId) return res.status(400).json({ error: 'userId required' });
     const session = sessions.get(normalizeUserId(userId));
     const found = session && findTab(session, tabId);
@@ -3819,8 +3794,18 @@ app.post('/tabs/:tabId/click', async (req, res) => {
     const { tabState } = found;
     tabState.toolCalls++; tabState.consecutiveTimeouts = 0; tabState.consecutiveFailures = 0;
     
-    if (!ref && !selector) {
-      return res.status(400).json({ error: 'ref or selector required' });
+    const hasCoordinates = coordinates != null;
+    if (!ref && !selector && !hasCoordinates) {
+      return res.status(400).json({ error: 'ref, selector, or coordinates required' });
+    }
+    if ([!!ref, !!selector, hasCoordinates].filter(Boolean).length > 1) {
+      return res.status(400).json({ error: 'provide only one of ref, selector, or coordinates' });
+    }
+    if (hasCoordinates && (
+      !Number.isFinite(coordinates?.x) || !Number.isFinite(coordinates?.y) ||
+      coordinates.x < 0 || coordinates.y < 0
+    )) {
+      return res.status(400).json({ error: 'coordinates.x and coordinates.y must be non-negative numbers' });
     }
     const selectorErr = selectorValidationError(selector);
     if (selectorErr) throw invalidSelectorError(selectorErr);
@@ -3828,98 +3813,27 @@ app.post('/tabs/:tabId/click', async (req, res) => {
     const result = await withUserLimit(userId, () => withTabLock(tabId, async () => {
       const clickStart = Date.now();
       const remainingBudget = () => Math.max(0, HANDLER_TIMEOUT_MS - 2000 - (Date.now() - clickStart));
-      // Full mouse event sequence for stubborn JS click handlers (mirrors Swift WebView.swift)
-      // Dispatches: mouseover -> mouseenter -> mousedown -> mouseup -> click
-      const dispatchMouseSequence = async (locator) => {
-        // boundingBox() with no timeout inherits Playwright's 30s default, which
-        // silently eats the entire handler budget when the element detached after
-        // the failed click attempt (the page changed under us). Bound it to the
-        // remaining budget (capped at 3s) so the route fails fast with an
-        // actionable 422 instead of blowing HANDLER_TIMEOUT_MS into a 500.
-        // NOTE: the message deliberately avoids the 'timed out after' phrase so
-        // isTimeoutError() doesn't classify a detached element as a navigation
-        // timeout and destroy the whole session in handleRouteError().
-        const bboxTimeout = Math.max(500, Math.min(3000, remainingBudget()));
-        let box;
-        try {
-          box = await locator.boundingBox({ timeout: bboxTimeout });
-        } catch (e) {
-          const detachedErr = new Error(`Element not actionable: no bounding box within ${bboxTimeout}ms (element likely detached after page change). Call snapshot to refresh refs and retry.`);
-          detachedErr.statusCode = 422;
-          throw detachedErr;
-        }
-        if (!box) throw new Error('Element not visible (no bounding box)');
-        
-        const x = box.x + box.width / 2;
-        const y = box.y + box.height / 2;
-        
-        // Move mouse to element (triggers mouseover/mouseenter)
-        await withTimeout(tabState.page.mouse.move(x, y), Math.max(1, remainingBudget()), 'native mouse move');
-        await tabState.page.waitForTimeout(50);
-        
-        // Full click sequence
-        await withTimeout(tabState.page.mouse.down(), Math.max(1, remainingBudget()), 'native mouse down');
-        await tabState.page.waitForTimeout(50);
-        await withTimeout(tabState.page.mouse.up(), Math.max(1, remainingBudget()), 'native mouse up');
-        
-        log('info', 'mouse sequence dispatched', { x: x.toFixed(0), y: y.toFixed(0) });
-      };
-      
       // On Google SERPs, skip the normal click attempt (always intercepted by overlays)
       // and go directly to force click -- saves 5s timeout per click
       const onGoogleSerp = isGoogleSerp(tabState.page.url());
+      const doClick = (locatorOrSelector, isLocator) => clickLocator({
+        tabState,
+        locatorOrSelector,
+        isLocator,
+        doubleClick,
+        forceFirst: onGoogleSerp,
+        remainingBudget,
+        withTimeout,
+        log,
+      });
       
-      const doClick = async (locatorOrSelector, isLocator) => {
-        let locator = isLocator ? locatorOrSelector : tabState.page.locator(locatorOrSelector);
-        // CSS selectors supplied by callers can match both the visible menu and
-        // inactive template copies. Prefer one visible match when that is
-        // unambiguous, while leaving selector lists untouched because appending
-        // :visible would change their meaning.
-        const visibleSelector = isLocator ? null : visibleSelectorCandidate(locatorOrSelector);
-        if (visibleSelector) {
-          const visibleLocator = tabState.page.locator(visibleSelector);
-          if (await visibleLocator.count() === 1) {
-            locator = visibleLocator;
-            log('info', 'click constrained selector to visible match', { selector: locatorOrSelector });
-          }
-        }
-        const click = async (options) => clickWithDownloadGuard(tabState, () => locator.click(options));
-        
-        if (onGoogleSerp) {
-          try {
-            await click({ timeout: 3000, force: true });
-          } catch (forceErr) {
-            log('warn', 'google force click failed, trying mouse sequence');
-            await dispatchMouseSequence(locator);
-          }
-          return;
-        }
-        
-        try {
-          // First try normal click (respects visibility, enabled, not-obscured)
-          await click({ timeout: 3000 });
-        } catch (err) {
-          // Fallback 1: If intercepted by overlay, retry with force
-          if (err.message.includes('intercepts pointer events')) {
-            log('warn', 'click intercepted, retrying with force');
-            try {
-              await click({ timeout: 3000, force: true });
-            } catch (forceErr) {
-              // Fallback 2: Full mouse event sequence for stubborn JS handlers
-              log('warn', 'force click failed, trying mouse sequence');
-              await dispatchMouseSequence(locator);
-            }
-          } else if (err.message.includes('not visible') || err.message.toLowerCase().includes('timeout')) {
-            // Fallback 2: Element not responding to click, try mouse sequence
-            log('warn', 'click timeout, trying mouse sequence');
-            await dispatchMouseSequence(locator);
-          } else {
-            throw err;
-          }
-        }
-      };
-      
-      if (ref) {
+      if (hasCoordinates) {
+        await clickWithDownloadGuard(tabState, () => tabState.page.mouse.click(
+          coordinates.x,
+          coordinates.y,
+          doubleClick ? { clickCount: 2 } : undefined
+        ));
+      } else if (ref) {
         let locator = refToLocator(tabState.page, ref, tabState.refs);
         if (!locator) {
           // Use tight timeout (4s max) to leave budget for click + post-click buildRefs
@@ -3982,7 +3896,14 @@ app.post('/tabs/:tabId/click', async (req, res) => {
     }, HANDLER_TIMEOUT_MS, () => destroyTimedOutTab(session, tabId, 'operation_timeout', userId)));
     
     log('info', 'clicked', { reqId: req.reqId, tabId, url: result.url });
-    pluginEvents.emit('tab:click', { userId: req.body.userId, tabId, ref: req.body.ref, selector: req.body.selector });
+    pluginEvents.emit('tab:click', {
+      userId: req.body.userId,
+      tabId,
+      ref: req.body.ref,
+      selector: req.body.selector,
+      coordinates: req.body.coordinates,
+      doubleClick: !!req.body.doubleClick,
+    });
     res.json(result);
   } catch (err) {
     log('error', 'click failed', { reqId: req.reqId, tabId, error: err.message });
@@ -4007,6 +3928,167 @@ app.post('/tabs/:tabId/click', async (req, res) => {
         log('warn', 'post-timeout refresh failed', { error: refreshErr.message });
       }
     }
+    handleRouteError(err, req, res);
+  }
+});
+
+// Visual pointer controls
+/**
+ * @openapi
+ * /tabs/{tabId}/mouse:
+ *   post:
+ *     tags: [Interaction]
+ *     summary: Move, hover, or drag the mouse
+ *     description: Performs native Playwright mouse actions in viewport CSS-pixel coordinates.
+ *     parameters:
+ *       - name: tabId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId, action]
+ *             properties:
+ *               userId:
+ *                 type: string
+ *               action:
+ *                 type: string
+ *                 enum: [move, hover, drag]
+ *               x:
+ *                 type: number
+ *               y:
+ *                 type: number
+ *               ref:
+ *                 type: string
+ *                 description: Element ref for hover.
+ *               selector:
+ *                 type: string
+ *                 description: CSS selector for hover.
+ *               start:
+ *                 type: object
+ *                 properties:
+ *                   x:
+ *                     type: number
+ *                   y:
+ *                     type: number
+ *               end:
+ *                 type: object
+ *                 properties:
+ *                   x:
+ *                     type: number
+ *                   y:
+ *                     type: number
+ *               button:
+ *                 type: string
+ *                 enum: [left, right, middle]
+ *                 default: left
+ *               steps:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 100
+ *                 default: 10
+ *     responses:
+ *       200:
+ *         description: Mouse action completed.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                 action:
+ *                   type: string
+ *                 url:
+ *                   type: string
+ *       400:
+ *         description: Invalid mouse action or coordinates.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Tab not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+app.post('/tabs/:tabId/mouse', async (req, res) => {
+  const tabId = req.params.tabId;
+  try {
+    const {
+      userId, action, x, y, ref, selector, start, end,
+      button = 'left', steps = 10,
+    } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+    if (!['move', 'hover', 'drag'].includes(action)) {
+      return res.status(400).json({ error: 'action must be move, hover, or drag' });
+    }
+    if (!['left', 'right', 'middle'].includes(button)) {
+      return res.status(400).json({ error: 'button must be left, right, or middle' });
+    }
+    if (!Number.isInteger(steps) || steps < 1 || steps > 100) {
+      return res.status(400).json({ error: 'steps must be an integer between 1 and 100' });
+    }
+    const validPoint = point => Number.isFinite(point?.x) && Number.isFinite(point?.y) && point.x >= 0 && point.y >= 0;
+    if (action === 'move' && !validPoint({ x, y })) {
+      return res.status(400).json({ error: 'move requires non-negative numeric x and y' });
+    }
+    if (action === 'hover' && ([!!ref, !!selector].filter(Boolean).length !== 1)) {
+      return res.status(400).json({ error: 'hover requires exactly one of ref or selector' });
+    }
+    if (action === 'drag' && (!validPoint(start) || !validPoint(end))) {
+      return res.status(400).json({ error: 'drag requires non-negative numeric start and end coordinates' });
+    }
+    const selectorErr = selectorValidationError(selector);
+    if (selectorErr) throw invalidSelectorError(selectorErr);
+
+    const session = sessions.get(normalizeUserId(userId));
+    const found = session && findTab(session, tabId);
+    if (!found) return tabNotFoundResponse(res, tabId || req.body?.tabId);
+    session.lastAccess = Date.now();
+    const { tabState } = found;
+    tabState.toolCalls++; tabState.consecutiveTimeouts = 0; tabState.consecutiveFailures = 0;
+
+    await withUserLimit(userId, () => withTabLock(tabId, async () => {
+      if (action === 'move') {
+        await tabState.page.mouse.move(x, y, { steps });
+      } else if (action === 'hover') {
+        let locator = selector ? tabState.page.locator(selector) : refToLocator(tabState.page, ref, tabState.refs);
+        if (!locator && ref) {
+          tabState.refs = await refreshTabRefs(tabState, { reason: 'pre_hover', timeoutMs: 4000 });
+          locator = refToLocator(tabState.page, ref, tabState.refs);
+        }
+        if (!locator) {
+          const maxRef = tabState.refs.size > 0 ? `e${tabState.refs.size}` : 'none';
+          throw new StaleRefsError(ref, maxRef, tabState.refs.size);
+        }
+        await locator.hover({ timeout: Math.min(5000, HANDLER_TIMEOUT_MS - 1000) });
+      } else {
+        let mouseIsDown = false;
+        try {
+          await tabState.page.mouse.move(start.x, start.y);
+          await tabState.page.mouse.down({ button });
+          mouseIsDown = true;
+          await tabState.page.mouse.move(end.x, end.y, { steps });
+        } finally {
+          if (mouseIsDown) await tabState.page.mouse.up({ button }).catch(() => {});
+        }
+      }
+      await tabState.page.waitForTimeout(150);
+      tabState.lastSnapshot = null;
+    }, HANDLER_TIMEOUT_MS));
+
+    log('info', 'mouse action', { reqId: req.reqId, tabId, action, ref, selector });
+    res.json({ ok: true, action, url: tabState.page.url() });
+  } catch (err) {
+    log('error', 'mouse action failed', { reqId: req.reqId, tabId, error: err.message });
     handleRouteError(err, req, res);
   }
 });

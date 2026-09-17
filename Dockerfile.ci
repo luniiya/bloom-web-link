@@ -83,7 +83,7 @@ COPY scripts/ ./scripts/
 
 # Install default plugin dependencies. yt-dlp is pinned per target architecture
 # and verified by the YouTube plugin hook.
-# Note: sh is used explicitly (./scripts/) because COPY from Windows
+# Invoke with sh explicitly so executable mode bits from source archives do not matter.
 # does not preserve +x permission bits in Docker build contexts.
 RUN case "${TARGETARCH}" in \
       amd64) export YT_DLP_ASSET=yt-dlp_linux YT_DLP_SHA256="${YT_DLP_SHA256_AMD64}" ;; \

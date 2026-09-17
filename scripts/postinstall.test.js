@@ -23,18 +23,10 @@ function postinstallTestEnv(overrides = {}) {
   const env = {};
   for (const name of [
     'PATH',
-    'Path',
     'HOME',
-    'USERPROFILE',
-    'APPDATA',
-    'LOCALAPPDATA',
     'TMPDIR',
     'TEMP',
     'TMP',
-    'SystemRoot',
-    'WINDIR',
-    'ComSpec',
-    'PATHEXT',
   ]) {
     if (process.env[name] !== undefined) env[name] = process.env[name];
   }
@@ -79,7 +71,6 @@ describe('postinstall fetch child env', () => {
       PATH: '/bin',
       HOME: '/home/agent',
       XDG_CACHE_HOME: '/home/agent/.cache',
-      LOCALAPPDATA: 'C:\\Users\\agent\\AppData\\Local',
       HTTPS_PROXY: 'http://proxy.example:8080',
       npm_config_https_proxy: 'http://npm-proxy.example:8080',
       NPM_CONFIG_REGISTRY: 'https://registry.npmjs.org/',
@@ -98,7 +89,6 @@ describe('postinstall fetch child env', () => {
     expect(childEnv).toEqual({
       PATH: '/bin',
       HOME: '/home/agent',
-      LOCALAPPDATA: 'C:\\Users\\agent\\AppData\\Local',
       XDG_CACHE_HOME: '/home/agent/.cache',
       HTTPS_PROXY: 'http://proxy.example:8080',
       npm_config_https_proxy: 'http://npm-proxy.example:8080',

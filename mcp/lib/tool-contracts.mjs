@@ -1,7 +1,7 @@
 /**
  * Canonical tool contracts for the camofox-browser REST API.
  *
- * Single source of truth shared by two hosts that expose the same 11 tools:
+ * Single source of truth shared by two hosts that expose the same tools:
  *   - mcp/server.mjs   (stdio MCP server for Claude Code, Codex, agy, Cursor, opencode)
  *   - plugin.ts        (OpenClaw plugin)
  *
@@ -64,7 +64,7 @@ const SEARCH_MACROS = [
 ];
 
 /**
- * The 11 tools, identical schema for both hosts. Edit here and both update.
+ * Canonical tools with identical schemas for both hosts. Edit here and both update.
  * @type {ToolDef[]}
  */
 export const TOOL_DEFS = [
@@ -100,15 +100,77 @@ export const TOOL_DEFS = [
   },
   {
     name: 'camofox_click',
-    description: 'Click an element in a Camoufox tab by ref (e.g., e1) or CSS selector.',
+    description: 'Click or double-click by element ref, CSS selector, or screenshot coordinates. Prefer refs; use coordinates for visual-only controls such as canvas content.',
     inputSchema: {
       type: 'object',
       properties: {
         tabId: { type: 'string', description: 'Tab identifier' },
         ref: { type: 'string', description: 'Element ref from snapshot (e.g., e1)' },
         selector: { type: 'string', description: 'CSS selector (alternative to ref)' },
+        coordinates: {
+          type: 'object',
+          description: 'Viewport CSS-pixel coordinates (alternative to ref/selector)',
+          properties: {
+            x: { type: 'number', minimum: 0 },
+            y: { type: 'number', minimum: 0 },
+          },
+          required: ['x', 'y'],
+        },
+        doubleClick: { type: 'boolean', description: 'Perform a double-click' },
       },
       required: ['tabId'],
+    },
+  },
+  {
+    name: 'camofox_wait',
+    description: 'Wait for page readiness or for one selector, text value, or URL pattern. Use after actions that trigger asynchronous UI updates.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'string', description: 'Tab identifier' },
+        selector: { type: 'string', description: 'CSS selector to wait for' },
+        text: { type: 'string', description: 'Page text to wait for' },
+        url: { type: 'string', description: 'URL or Playwright glob pattern to wait for' },
+        state: {
+          type: 'string',
+          enum: ['attached', 'detached', 'visible', 'hidden'],
+          description: 'Desired selector/text state (default: visible)',
+        },
+        timeout: { type: 'number', description: 'Maximum wait in milliseconds (default: 10000)' },
+        waitForNetwork: { type: 'boolean', description: 'Also try to reach network idle (default: true)' },
+        dismissConsent: { type: 'boolean', description: 'Try to dismiss consent dialogs after the condition is met' },
+      },
+      required: ['tabId'],
+    },
+  },
+  {
+    name: 'camofox_mouse',
+    description: 'Perform visual mouse movement, element hover, or coordinate drag. Coordinates are viewport CSS pixels matching the screenshot.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'string', description: 'Tab identifier' },
+        action: { type: 'string', enum: ['move', 'hover', 'drag'] },
+        x: { type: 'number', minimum: 0, description: 'Move destination X coordinate' },
+        y: { type: 'number', minimum: 0, description: 'Move destination Y coordinate' },
+        ref: { type: 'string', description: 'Element ref to hover' },
+        selector: { type: 'string', description: 'CSS selector to hover' },
+        start: {
+          type: 'object',
+          description: 'Drag start coordinates',
+          properties: { x: { type: 'number', minimum: 0 }, y: { type: 'number', minimum: 0 } },
+          required: ['x', 'y'],
+        },
+        end: {
+          type: 'object',
+          description: 'Drag end coordinates',
+          properties: { x: { type: 'number', minimum: 0 }, y: { type: 'number', minimum: 0 } },
+          required: ['x', 'y'],
+        },
+        button: { type: 'string', enum: ['left', 'right', 'middle'], description: 'Drag button (default: left)' },
+        steps: { type: 'number', minimum: 1, maximum: 100, description: 'Intermediate movement steps (default: 10)' },
+      },
+      required: ['tabId', 'action'],
     },
   },
   {
@@ -275,6 +337,22 @@ export function buildRequest(name, args, ctx) {
       return {
         method: 'POST',
         path: `/tabs/${args.tabId}/click`,
+        auth: 'accessKey',
+        responseKind: 'json',
+        body: { ...without(args), userId },
+      };
+    case 'camofox_wait':
+      return {
+        method: 'POST',
+        path: `/tabs/${args.tabId}/wait`,
+        auth: 'accessKey',
+        responseKind: 'json',
+        body: { ...without(args), userId },
+      };
+    case 'camofox_mouse':
+      return {
+        method: 'POST',
+        path: `/tabs/${args.tabId}/mouse`,
         auth: 'accessKey',
         responseKind: 'json',
         body: { ...without(args), userId },

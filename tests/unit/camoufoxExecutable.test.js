@@ -41,7 +41,7 @@ describe('prepareExternalCamoufoxExecutable', () => {
     expect(existsSync(join(cacheDir, 'properties.json'))).toBe(true);
     const cacheExecutable = platform() === 'darwin'
       ? join(cacheDir, 'Camoufox.app', 'Contents', 'MacOS', 'camoufox')
-      : join(cacheDir, platform() === 'win32' ? 'camoufox.exe' : 'camoufox-bin');
+      : join(cacheDir, 'camoufox-bin');
     expect(existsSync(cacheExecutable)).toBe(true);
   });
 

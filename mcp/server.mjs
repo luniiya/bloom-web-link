@@ -22,6 +22,9 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 import { loadMcpConfig } from "./lib/config.mjs";
 import {
@@ -50,26 +53,6 @@ const BASE_URL = process.env.CAMOFOX_BASE_URL || `http://localhost:${CONFIG.port
 const USER_ID = process.env.CAMOFOX_USER_ID || `mcp-${randomUUID()}`;
 // sessionKey partitions tabs within a user (matches plugin.ts fallback "default").
 const SESSION_KEY = process.env.CAMOFOX_SESSION_KEY || "default";
-
-// The standalone package declares the SDK directly. Surface a clear,
-// actionable error if an incomplete installation is missing it.
-let Server, StdioServerTransport, CallToolRequestSchema, ListToolsRequestSchema;
-try {
-  const serverMod = await import("@modelcontextprotocol/sdk/server/index.js");
-  Server = serverMod.Server;
-  const stdioMod = await import("@modelcontextprotocol/sdk/server/stdio.js");
-  StdioServerTransport = stdioMod.StdioServerTransport;
-  const typesMod = await import("@modelcontextprotocol/sdk/types.js");
-  CallToolRequestSchema = typesMod.CallToolRequestSchema;
-  ListToolsRequestSchema = typesMod.ListToolsRequestSchema;
-} catch {
-  console.error(
-    "[camofox-browser-mcp] @modelcontextprotocol/sdk is not installed.\n" +
-      "Install the adapter dependencies with: npm install\n" +
-      "from the @askjo/camofox-browser-mcp package directory."
-  );
-  process.exit(1);
-}
 
 const server = new Server(
   { name: "camofox-browser", version: VERSION },
@@ -113,6 +96,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+// Some Unix supervisors create stdin as an initially paused pipe. Keep the
+// process alive and consuming requests even when no message arrives instantly.
+process.stdin.resume();
 console.error(
   `[camofox-browser-mcp] v${VERSION} connected → ${BASE_URL} (user=${USER_ID})`
 );

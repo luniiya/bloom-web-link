@@ -34,6 +34,10 @@
   "engines": {
     "node": ">=22"
   },
+  "os": [
+    "linux",
+    "darwin"
+  ],
   "files": [
     "server.js",
     "lib/",
@@ -80,7 +84,15 @@
       },
       {
         "name": "camofox_click",
-        "description": "Click an element by ref or CSS selector"
+        "description": "Click by ref, CSS selector, or viewport coordinates"
+      },
+      {
+        "name": "camofox_wait",
+        "description": "Wait for page readiness, a selector, text, or URL"
+      },
+      {
+        "name": "camofox_mouse",
+        "description": "Move, hover, or drag the native browser mouse"
       },
       {
         "name": "camofox_type",
@@ -136,15 +148,13 @@
     "fetch-bin": "npx camoufox-js fetch"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "13.0.1",
     "camoufox-js": "0.11.5",
     "express": "^5.2.1",
     "playwright-core": "^1.58.0",
     "prom-client": "^15.1.3",
     "swagger-jsdoc": "^6.2.8"
-  },
-  "optionalDependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

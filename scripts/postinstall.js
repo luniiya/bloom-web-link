@@ -2,14 +2,12 @@
 // Postinstall: download Camoufox binaries and verify the cache is populated.
 //
 // Why a script instead of an inline `npx camoufox-js fetch`:
-//   1. Cross-platform: avoids POSIX-only `VAR= cmd` shell syntax (Windows
-//      cmd.exe does not honor it).
-//   2. Defends against PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 inherited from
+//   1. Defends against PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 inherited from
 //      the user's shell or a CI/Docker base image. `camoufox-js` honors
 //      that flag by convention (same env name as `playwright`'s skip flag),
 //      which leaves the binary cache empty and makes the server crash at
 //      runtime with "Version information not found".
-//   3. Verifies the cache after fetch and prints a warning with actionable
+//   2. Verifies the cache after fetch and prints a warning with actionable
 //      remediation if the binary is still missing — the server will fail
 //      at startup, but install itself succeeds so plugin installs don't break.
 //
@@ -33,19 +31,11 @@ const EXTERNAL_EXECUTABLE_ENV_VARS = [
 
 const FETCH_CHILD_ENV_VARS = [
   'PATH',
-  'Path',
   'HOME',
-  'USERPROFILE',
-  'APPDATA',
-  'LOCALAPPDATA',
   'XDG_CACHE_HOME',
   'TMPDIR',
   'TEMP',
   'TMP',
-  'SystemRoot',
-  'WINDIR',
-  'ComSpec',
-  'PATHEXT',
   'CI',
   'NODE_EXTRA_CA_CERTS',
   'SSL_CERT_FILE',
@@ -94,12 +84,6 @@ function camoufoxCacheDir() {
   const home = homedir();
   const plat = platform();
   if (plat === 'darwin') return join(home, 'Library', 'Caches', 'camoufox');
-  if (plat === 'win32') {
-    // Matches camoufox-js/dist/pkgman.js:246 which nests the app name twice:
-    // %LOCALAPPDATA%\camoufox\camoufox\Cache
-    const base = process.env.LOCALAPPDATA || join(home, 'AppData', 'Local');
-    return join(base, 'camoufox', 'camoufox', 'Cache');
-  }
   return join(process.env.XDG_CACHE_HOME || join(home, '.cache'), 'camoufox');
 }
 
@@ -134,12 +118,10 @@ function assertExternalExecutable(path) {
   if (!existsSync(path)) fail(`external Camoufox executable does not exist: ${path}`);
   const stat = statSync(path);
   if (!stat.isFile()) fail(`external Camoufox executable is not a file: ${path}`);
-  if (platform() !== 'win32') {
-    try {
-      accessSync(path, constants.X_OK);
-    } catch {
-      fail(`external Camoufox executable is not executable: ${path}`);
-    }
+  try {
+    accessSync(path, constants.X_OK);
+  } catch {
+    fail(`external Camoufox executable is not executable: ${path}`);
   }
 }
 
@@ -171,11 +153,9 @@ export async function main() {
   // names like spawn/spawnSync/exec/execSync in the same file as "child_process".
   const { spawnSync: run } = await import('node:child_process');
 
-  const isWindows = platform() === 'win32';
-  const result = run(isWindows ? 'npx.cmd' : 'npx', ['camoufox-js', 'fetch'], {
+  const result = run('npx', ['camoufox-js', 'fetch'], {
     stdio: 'inherit',
     env: childEnvForFetch(),
-    shell: isWindows,
   });
 
   if (result.error) fail(`failed to spawn npx: ${result.error.message}`);

@@ -182,4 +182,14 @@ describe('loadConfig', () => {
     expect(config.serverEnv.CAMOFOX_DISABLE_DEFAULT_ADDONS).toBe('true');
   });
 
+  test('enables reject-only cookie banner handling by default and allows opt-out', () => {
+    delete process.env.CAMOFOX_COOKIE_BANNER_HANDLING;
+    expect(loadConfig().cookieBannerHandlingEnabled).toBe(true);
+
+    process.env.CAMOFOX_COOKIE_BANNER_HANDLING = 'false';
+    const config = loadConfig();
+    expect(config.cookieBannerHandlingEnabled).toBe(false);
+    expect(config.serverEnv.CAMOFOX_COOKIE_BANNER_HANDLING).toBe('false');
+  });
+
 });

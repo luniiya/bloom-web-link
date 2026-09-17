@@ -2,7 +2,7 @@
 
 A standalone [Model Context Protocol](https://modelcontextprotocol.io) server that exposes camofox-browser to any MCP-compatible host — Claude Code, Cursor, etc. — without requiring OpenClaw.
 
-It mirrors the existing OpenClaw plugin **1:1**: same 11 tool names, identical JSON-Schema parameters, and the same REST routes. Whether an agent reaches camofox via OpenClaw or MCP, the behavior is identical.
+It mirrors the existing OpenClaw plugin **1:1**: same 13 tool names, identical JSON-Schema parameters, and the same REST routes. Whether an agent reaches camofox via OpenClaw or MCP, the behavior is identical.
 
 The initial MCP server implementation was contributed by [@epicsagas](https://github.com/epicsagas).
 
@@ -170,7 +170,7 @@ claude mcp add camofox-browser -- node /Users/you/src/camofox-browser/mcp/server
 | Cursor | Settings → MCP — server shows green |
 | opencode | `opencode mcp list` |
 
-You should see 11 tools: `camofox_create_tab`, `camofox_snapshot`, `camofox_click`, `camofox_type`, `camofox_navigate`, `camofox_scroll`, `camofox_screenshot`, `camofox_evaluate`, `camofox_list_tabs`, `camofox_close_tab`, `camofox_import_cookies`.
+You should see 13 tools: `camofox_create_tab`, `camofox_snapshot`, `camofox_click`, `camofox_wait`, `camofox_mouse`, `camofox_type`, `camofox_navigate`, `camofox_scroll`, `camofox_screenshot`, `camofox_evaluate`, `camofox_list_tabs`, `camofox_close_tab`, `camofox_import_cookies`.
 
 ## Tools
 

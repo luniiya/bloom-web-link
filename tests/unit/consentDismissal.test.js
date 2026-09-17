@@ -1,42 +1,41 @@
-const { readFileSync } = process.getBuiltinModule('fs');
-const { join } = process.getBuiltinModule('path');
+import { describe, expect, jest, test } from '@jest/globals';
+import { COOKIE_BANNER_FIREFOX_PREFS, dismissConsentDialogs } from '../../lib/consent.js';
+import { createPageReady } from '../../lib/page-ready.js';
 
-const serverSource = readFileSync(join(process.cwd(), 'server.js'), 'utf-8');
-
-function sourceBetween(startMarker, endMarker) {
-  const start = serverSource.indexOf(startMarker);
-  const end = serverSource.indexOf(endMarker, start);
-  expect(start).toBeGreaterThanOrEqual(0);
-  expect(end).toBeGreaterThan(start);
-  return serverSource.slice(start, end);
-}
-
-describe('consent dismissal safety contract', () => {
-  const waitForPageReady = sourceBetween(
-    'async function waitForPageReady',
-    'async function dismissConsentDialogs'
-  );
-  const dismissConsentDialogs = sourceBetween(
-    'async function dismissConsentDialogs',
-    '// --- Google SERP detection ---'
-  );
-
-  test('does not dismiss dialogs unless explicitly requested', () => {
-    expect(waitForPageReady).toContain('dismissConsent = false');
-    expect(waitForPageReady).toContain('if (dismissConsent) {');
+describe('consent handling', () => {
+  test('uses Firefox reject-only mode in normal and private contexts', () => {
+    expect(COOKIE_BANNER_FIREFOX_PREFS['cookiebanners.service.mode']).toBe(1);
+    expect(COOKIE_BANNER_FIREFOX_PREFS['cookiebanners.service.mode.privateBrowsing']).toBe(1);
+    expect(COOKIE_BANNER_FIREFOX_PREFS['cookiebanners.service.enableGlobalRules']).toBe(true);
   });
 
-  test('does not use generic dialog or modal selectors', () => {
-    expect(dismissConsentDialogs).not.toMatch(/dialog button|\[class\*="modal"\]|\[class\*="overlay"\]|aria-label="Close"/);
-    expect(dismissConsentDialogs).toContain('#onetrust-banner-sdk');
+  test('fallback never targets accept-all or generic dialogs', async () => {
+    const selectors = [];
+    const page = {
+      locator(selector) {
+        selectors.push(selector);
+        return { first: () => ({ isVisible: async () => false }) };
+      },
+    };
+
+    await dismissConsentDialogs(page);
+    expect(selectors.join(' ')).not.toMatch(/accept|allowall|dialog button|modal|overlay/i);
+    expect(selectors).toContain('#onetrust-banner-sdk #onetrust-reject-all-handler');
   });
 
-  test('exposes consent dismissal as an opt-in wait request', () => {
-    const waitRoute = sourceBetween(
-      "app.post('/tabs/:tabId/wait'",
-      "app.post('/tabs/:tabId/click'"
-    );
-    expect(waitRoute).toContain('dismissConsent = false');
-    expect(waitRoute).toContain('waitForPageReady(tabState.page, { timeout, waitForNetwork, dismissConsent })');
+  test('page readiness only runs DOM fallback when explicitly requested', async () => {
+    const dismiss = jest.fn(async () => false);
+    const page = {
+      waitForLoadState: jest.fn(async () => {}),
+      evaluate: jest.fn(async () => {}),
+      waitForTimeout: jest.fn(async () => {}),
+    };
+    const waitForPageReady = createPageReady({ dismissConsentDialogs: dismiss });
+
+    await waitForPageReady(page, { waitForNetwork: false, waitForHydration: false, settleMs: 0 });
+    expect(dismiss).not.toHaveBeenCalled();
+
+    await waitForPageReady(page, { waitForNetwork: false, waitForHydration: false, settleMs: 0, dismissConsent: true });
+    expect(dismiss).toHaveBeenCalledWith(page, { log: expect.any(Function) });
   });
 });

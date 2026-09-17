@@ -88,8 +88,8 @@ afterEach(() => {
 
 // --- Schema sanity ----------------------------------------------------------
 describe('TOOL_DEFS', () => {
-  test('exposes exactly 11 tools', () => {
-    expect(TOOL_DEFS).toHaveLength(11);
+  test('exposes exactly 13 tools', () => {
+    expect(TOOL_DEFS).toHaveLength(13);
   });
 
   test('every def has a unique name and a valid JSON-Schema object', () => {
@@ -109,6 +109,8 @@ describe('buildRequest', () => {
     ['camofox_snapshot', { tabId: 't1' }, { method: 'GET', path: '/tabs/t1/snapshot?userId=u1&includeScreenshot=true', auth: 'accessKey', kind: 'snapshot' }],
     ['camofox_snapshot', { tabId: 't1', offset: 40 }, { method: 'GET', path: '/tabs/t1/snapshot?userId=u1&includeScreenshot=true&offset=40', auth: 'accessKey', kind: 'snapshot' }],
     ['camofox_click', { tabId: 't1', ref: 'e1' }, { method: 'POST', path: '/tabs/t1/click', auth: 'accessKey', kind: 'json' }],
+    ['camofox_wait', { tabId: 't1', selector: '#ready' }, { method: 'POST', path: '/tabs/t1/wait', auth: 'accessKey', kind: 'json' }],
+    ['camofox_mouse', { tabId: 't1', action: 'move', x: 20, y: 40 }, { method: 'POST', path: '/tabs/t1/mouse', auth: 'accessKey', kind: 'json' }],
     ['camofox_type', { tabId: 't1', text: 'hi', pressEnter: true }, { method: 'POST', path: '/tabs/t1/type', auth: 'accessKey', kind: 'json' }],
     ['camofox_navigate', { tabId: 't1', url: 'https://y.com' }, { method: 'POST', path: '/tabs/t1/navigate', auth: 'accessKey', kind: 'json' }],
     ['camofox_scroll', { tabId: 't1', direction: 'down', amount: 200 }, { method: 'POST', path: '/tabs/t1/scroll', auth: 'accessKey', kind: 'json' }],
@@ -129,10 +131,13 @@ describe('buildRequest', () => {
     expect(spec.body).toEqual({ url: 'https://x.com', userId: 'u1', sessionKey: 'default' });
   });
 
-  test('click/type/navigate/scroll forward all non-routing args + userId in body', () => {
+  test('interaction tools forward all non-routing args + userId in body', () => {
     const spec = buildRequest('camofox_type', { tabId: 't1', ref: 'e2', text: 'hi', pressEnter: true }, CTX);
     expect(spec.body).toEqual({ ref: 'e2', text: 'hi', pressEnter: true, userId: 'u1' });
     expect(spec.body.tabId).toBeUndefined();
+
+    const mouse = buildRequest('camofox_mouse', { tabId: 't1', action: 'drag', start: { x: 1, y: 2 }, end: { x: 3, y: 4 } }, CTX);
+    expect(mouse.body).toEqual({ action: 'drag', start: { x: 1, y: 2 }, end: { x: 3, y: 4 }, userId: 'u1' });
   });
 
   test('evaluate body is exactly { userId, expression }', () => {

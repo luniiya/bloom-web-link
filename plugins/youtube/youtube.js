@@ -71,7 +71,6 @@ async function runYtDlp(binary, args, timeoutMs) {
       args,
       {
         timeout: timeoutMs,
-        windowsHide: true,
         env: buildSafeEnv(),
         maxBuffer: 4 * 1024 * 1024,
       },

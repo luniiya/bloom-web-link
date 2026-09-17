@@ -779,7 +779,7 @@
         "tags": [
           "Interaction"
         ],
-        "summary": "Wait for a selector or timeout",
+        "summary": "Wait for page readiness or a page condition",
         "parameters": [
           {
             "name": "tabId",
@@ -804,11 +804,38 @@
                     "type": "string"
                   },
                   "selector": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "CSS selector to wait for."
+                  },
+                  "text": {
+                    "type": "string",
+                    "description": "Visible text to wait for."
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "URL or Playwright glob pattern to wait for."
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "attached",
+                      "detached",
+                      "visible",
+                      "hidden"
+                    ],
+                    "default": "visible"
                   },
                   "timeout": {
                     "type": "integer",
                     "description": "Max wait in ms."
+                  },
+                  "waitForNetwork": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "dismissConsent": {
+                    "type": "boolean",
+                    "default": false
                   }
                 }
               }
@@ -934,6 +961,146 @@
           },
           "409": {
             "description": "Page changed during the click; caller should take a fresh snapshot and retry with current refs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/mouse": {
+      "post": {
+        "tags": [
+          "Interaction"
+        ],
+        "summary": "Move, hover, or drag the mouse",
+        "description": "Performs native Playwright mouse actions in viewport CSS-pixel coordinates.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "action"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "move",
+                      "hover",
+                      "drag"
+                    ]
+                  },
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "ref": {
+                    "type": "string",
+                    "description": "Element ref for hover."
+                  },
+                  "selector": {
+                    "type": "string",
+                    "description": "CSS selector for hover."
+                  },
+                  "start": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "end": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "button": {
+                    "type": "string",
+                    "enum": [
+                      "left",
+                      "right",
+                      "middle"
+                    ],
+                    "default": "left"
+                  },
+                  "steps": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mouse action completed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "action": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid mouse action or coordinates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tab not found.",
             "content": {
               "application/json": {
                 "schema": {

@@ -19,12 +19,14 @@ describe('timed-out tab operations', () => {
 
   test('marks native mouse calls as bounded tab-destroying operations', () => {
     const source = readFileSync(new URL('../../server.js', import.meta.url), 'utf8');
+    const pointerSource = readFileSync(new URL('../../lib/pointer.js', import.meta.url), 'utf8');
     const clickStart = source.indexOf("app.post('/tabs/:tabId/click'");
     const clickRoute = source.slice(clickStart, source.indexOf("app.post('/tabs/:tabId/upload'", clickStart));
 
     for (const action of ['move', 'down', 'up']) {
-      expect(clickRoute).toContain(`withTimeout(tabState.page.mouse.${action}`);
+      expect(pointerSource).toContain(`withTimeout(page.mouse.${action}`);
     }
+    expect(clickRoute).toContain('clickLocator({');
     expect(clickRoute).toContain("destroyTimedOutTab(session, tabId, 'operation_timeout', userId)");
   });
 
