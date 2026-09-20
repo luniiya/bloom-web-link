@@ -24,7 +24,9 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const serverSrc = readFileSync(join(__dirname, '../../server.js'), 'utf8');
+// The mouse-sequence fallback lives in lib/pointer.js (extracted out of
+// server.js's /click route so it can be reused by /batch's click action too).
+const serverSrc = readFileSync(join(__dirname, '../../lib/pointer.js'), 'utf8');
 
 // Mirror of isTimeoutError from server.js (kept in sync; see navigationTimeout.test.js)
 function isTimeoutError(err) {
@@ -39,9 +41,9 @@ function computeBboxTimeout(remainingBudgetMs) {
 }
 
 describe('/click mouse-sequence boundingBox bounding', () => {
-  describe('server.js source contract', () => {
+  describe('lib/pointer.js source contract', () => {
     test('boundingBox in the mouse-sequence fallback is called with an explicit timeout', () => {
-      // Any bare `locator.boundingBox()` (no options) inside server.js would
+      // Any bare `locator.boundingBox()` (no options) inside pointer.js would
       // reintroduce the 30s default-timeout hang.
       const bare = serverSrc.match(/\.boundingBox\(\s*\)/g) || [];
       expect(bare).toHaveLength(0);

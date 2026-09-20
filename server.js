@@ -55,6 +55,7 @@ import { createVirtualDisplayRegistry } from './lib/plugin-capabilities.js';
 import { killProcessIds } from './lib/browser-processes.js';
 import { snapshotOwnedBrowserProcesses, survivingOwnedBrowserProcesses, profilePathsFromProcessSnapshot } from './lib/process-ownership.js';
 import { COOKIE_BANNER_FIREFOX_PREFS, dismissConsentDialogs as dismissKnownConsentDialogs } from './lib/consent.js';
+import { resolveExtraAddons } from './lib/extra-addons.js';
 import { createPageReady } from './lib/page-ready.js';
 import {
   safePageUrl, urlDomain, hashIdentifier,
@@ -166,6 +167,9 @@ app.use((req, res, next) => {
     if (req.path !== '/health') {
       log('info', 'res', { reqId, status: res.statusCode, ms });
     }
+    // Surface server-side timing back to the caller so agents can tell
+    // "the tool was slow" apart from "the network hop was slow" instead of guessing.
+    if (!res.headersSent) res.setHeader('X-Bwl-Server-Ms', String(ms));
 
     return origEnd(...args);
   };
@@ -258,13 +262,16 @@ function invalidSelectorError(message) {
 const NON_FILLABLE_INPUT_TYPES = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
 
 async function assertLocatorFillable(locator) {
+  // Bounded explicitly: Locator.evaluate() otherwise inherits Playwright's
+  // default (30s) wait-for-attached timeout, which can silently eat almost
+  // an entire request's handler budget if the selector matches nothing yet.
   const info = await locator.evaluate((el) => {
     const tagName = el.tagName?.toLowerCase?.() || '';
     const type = tagName === 'input' ? (el.getAttribute('type') || 'text').toLowerCase() : '';
     const role = el.getAttribute?.('role') || '';
     const contentEditable = el.isContentEditable;
     return { tagName, type, role, contentEditable };
-  });
+  }, undefined, { timeout: 5000 });
   if (info.contentEditable || info.tagName === 'textarea') return;
   if (info.tagName === 'input' && !NON_FILLABLE_INPUT_TYPES.has(info.type)) return;
   if (info.role === 'textbox' || info.role === 'searchbox') return;
@@ -283,6 +290,13 @@ async function fillLocator(locator, text) {
 function safeError(err) {
   if (CONFIG.nodeEnv === 'production') {
     log('error', 'internal error', { error: err.message, stack: err.stack });
+    // Errors we deliberately raise with a code/statusCode (StaleRefsError,
+    // element_not_actionable, evaluate_error, etc.), or that browserErrorCode()
+    // recognizes as one of our known classified types (ambiguous_selector,
+    // stale_refs, page_crashed, ...), are authored to be safe and actionable
+    // for the caller -- only a genuinely unclassified error risks leaking
+    // stack-trace-shaped internals, so only that case gets redacted.
+    if (err.code || err.statusCode || browserErrorCode(err)) return err.message;
     return 'Internal server error';
   }
   return err.message;
@@ -299,6 +313,7 @@ function sendError(res, err, extraFields = {}) {
   };
   if (code) body.code = code;
   if (recovery) body.recovery = recovery;
+  if (code === 'ambiguous_selector') body.hint = 'Pass nth (0-based) to bwl_click to click the exact match instead of retrying the same selector.';
   if (err instanceof StaleRefsError) body.ref = err.ref;
   if (status >= 500 && !err.statusCode && !recovery) {
     const req = res.req;
@@ -1091,8 +1106,16 @@ function isCamoufoxGeoipError(err) {
 const virtualDisplayRegistry = createVirtualDisplayRegistry(() => new DefaultVirtualDisplay());
 
 async function buildLaunchOptionsWithGeoipFallback(baseOptions, attemptMeta) {
+  // camoufox-js's launchOptions() mutates the `addons` array in place
+  // (appending its default addons), so each attempt needs its own copy —
+  // otherwise a geoip-fallback retry would double-append onto the array
+  // from the first (failed) attempt.
   try {
-    return await withTimeout(launchOptions(baseOptions), GEOIP_SETUP_TIMEOUT_MS, 'GeoIP setup');
+    return await withTimeout(
+      launchOptions({ ...baseOptions, addons: [...(baseOptions.addons ?? [])] }),
+      GEOIP_SETUP_TIMEOUT_MS,
+      'GeoIP setup'
+    );
   } catch (err) {
     if (!baseOptions.geoip || !isCamoufoxGeoipError(err)) {
       throw err;
@@ -1101,7 +1124,7 @@ async function buildLaunchOptionsWithGeoipFallback(baseOptions, attemptMeta) {
       ...attemptMeta,
       error: err.message,
     });
-    return await launchOptions({ ...baseOptions, geoip: false });
+    return await launchOptions({ ...baseOptions, geoip: false, addons: [...(baseOptions.addons ?? [])] });
   }
 }
 
@@ -1151,6 +1174,9 @@ async function launchBrowserInstance() {
           excludeAddons: ['UBO'],
         });
       }
+      const extraAddons = CONFIG.disableExtraAddons
+        ? []
+        : await resolveExtraAddons({ log });
       const options = await buildLaunchOptionsWithGeoipFallback({
         executable_path: externalCamoufox?.executablePath,
         headless: useVirtualDisplay ? false : !useDesktopWindow,
@@ -1161,6 +1187,7 @@ async function launchBrowserInstance() {
         geoip: !!launchProxy,
         locale: launchLocale({ hasProxy: !!proxyPool, directIdentity: CONFIG.directIdentity }),
         virtual_display: vdDisplay,
+        addons: extraAddons,
         exclude_addons: CONFIG.disableDefaultAddons ? ['UBO'] : undefined,
         firefox_user_prefs: CONFIG.cookieBannerHandlingEnabled ? { ...COOKIE_BANNER_FIREFOX_PREFS } : undefined,
       }, {
@@ -2392,7 +2419,61 @@ async function _buildRefsInner(page, refs, start) {
       log('info', 'buildRefs: processed iframes', { count: iframesProcessed, totalRefs: refCounter - 1 });
     }
   }
-  
+
+  // --- DOM-CLICKABLE FALLBACK ---
+  // ariaSnapshot only assigns role=link/button (and thus only those get refs
+  // above) to elements the accessibility tree recognizes as such -- an <a>
+  // with no href, or a <div onclick=...> hover-reveal control (both common on
+  // real e-commerce sites, e.g. "Add to cart" overlays), gets no role at all
+  // and would otherwise only ever show up as inert text in the snapshot, with
+  // no ref to click it by. Tag genuinely clickable-but-role-less elements
+  // with a throwaway data attribute so they can get a ref too.
+  const domFallbackRemaining = BUILDREFS_TIMEOUT_MS - (Date.now() - start);
+  if (domFallbackRemaining > 1500 && refCounter <= MAX_SNAPSHOT_NODES) {
+    try {
+      const budget = MAX_SNAPSHOT_NODES - refCounter + 1;
+      const candidates = await withTimeout(
+        page.evaluate((maxCandidates) => {
+          const out = [];
+          const els = document.querySelectorAll('a, [onclick]');
+          let scanned = 0;
+          for (const el of els) {
+            if (out.length >= maxCandidates || scanned >= 2000) break;
+            scanned++;
+            const tag = el.tagName.toLowerCase();
+            if (tag === 'button') continue; // already has role=button via ariaSnapshot
+            if (tag === 'a') {
+              const href = el.getAttribute('href');
+              if (href && href !== '#' && !href.startsWith('javascript:')) continue; // real link, already role=link
+            }
+            const rect = el.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) continue;
+            const style = getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+            const text = (el.textContent || '').trim().slice(0, 60);
+            if (!text) continue;
+            const marker = `bwl-dom-${out.length}`;
+            el.setAttribute('data-bwl-ref', marker);
+            out.push({ marker, text });
+          }
+          return out;
+        }, budget),
+        Math.min(domFallbackRemaining - 500, 3000),
+        'dom_clickable_scan'
+      );
+      for (const { marker, text } of candidates) {
+        if (refCounter > MAX_SNAPSHOT_NODES) break;
+        const refId = `e${refCounter++}`;
+        refs.set(refId, { selector: `[data-bwl-ref="${marker}"]`, name: text });
+      }
+      if (candidates.length > 0) {
+        log('info', 'buildRefs: added DOM-clickable fallback refs', { count: candidates.length });
+      }
+    } catch (err) {
+      log('debug', 'buildRefs: DOM-clickable fallback skipped', { error: err.message });
+    }
+  }
+
   return refs;
 }
 
@@ -2467,9 +2548,13 @@ async function getAriaSnapshot(page) {
 function refToLocator(page, ref, refs) {
   const info = refs.get(ref);
   if (!info) return null;
-  
+
+  // DOM-clickable fallback refs (see buildRefs) resolve by the data attribute
+  // stamped onto the element directly -- no role/name to disambiguate.
+  if (info.selector) return page.locator(info.selector);
+
   const { role, name, nth, frameName, frameUrl } = info;
-  
+
   // If ref belongs to an iframe, resolve via frame locator
   if (frameName || frameUrl) {
     let frame = null;
@@ -3558,7 +3643,19 @@ app.get('/tabs/:tabId/snapshot', async (req, res) => {
           return line;
         }).join('\n');
       }
-      
+
+      // DOM-clickable fallback refs (see buildRefs) have no ARIA role/name, so
+      // the line-matching annotation above can't place a [eN] marker next to
+      // them in the tree -- list them separately instead of leaving them
+      // resolvable-but-invisible to whoever reads this snapshot.
+      const domClickableRefs = [...tabState.refs].filter(([, info]) => info.selector);
+      if (domClickableRefs.length > 0) {
+        const extra = domClickableRefs
+          .map(([refId, info]) => `- clickable (no ARIA role) "${info.name}" [${refId}]`)
+          .join('\n');
+        annotatedYaml = annotatedYaml ? `${annotatedYaml}\n${extra}` : extra;
+      }
+
       tabState.lastSnapshot = annotatedYaml;
       tabState.lastStructure = structure;
       if (annotatedYaml) snapshotBytes.labels('full').observe(Buffer.byteLength(annotatedYaml, 'utf8'));
@@ -3588,6 +3685,185 @@ app.get('/tabs/:tabId/snapshot', async (req, res) => {
     res.json(result);
   } catch (err) {
     log('error', 'snapshot failed', { reqId: req.reqId, tabId: req.params.tabId, error: err.message });
+    handleRouteError(err, req, res);
+  }
+});
+
+// Lightweight text-only read (no accessibility tree, no refs, no screenshot --
+// the cheapest way to poll page state between interactions).
+/**
+ * @openapi
+ * /tabs/{tabId}/text:
+ *   get:
+ *     tags: [Tabs]
+ *     summary: Lightweight text-only page read
+ *     description: Returns visible page text with no accessibility tree, no element refs, and no screenshot. Use to cheaply poll page state (e.g. did a value change) between interactions; use /snapshot when you need refs to click/type against.
+ *     parameters:
+ *       - name: tabId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: userId
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: selector
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Scope the text read to one element instead of the whole page.
+ *       - name: offset
+ *         in: query
+ *         schema:
+ *           type: number
+ *     responses:
+ *       200:
+ *         description: Page text.
+ *       404:
+ *         description: Tab not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+app.get('/tabs/:tabId/text', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+    const selector = req.query.selector;
+    const offset = parseInt(req.query.offset) || 0;
+    const session = sessions.get(normalizeUserId(userId));
+    const found = session && findTab(session, req.params.tabId);
+    if (!found) return tabNotFoundResponse(res, req.params.tabId || req.body?.tabId);
+    session.lastAccess = Date.now();
+
+    const { tabState } = found;
+    tabState.toolCalls++; tabState.consecutiveTimeouts = 0; tabState.consecutiveFailures = 0;
+
+    const selectorErr = selectorValidationError(selector);
+    if (selectorErr) throw invalidSelectorError(selectorErr);
+
+    const text = await withUserLimit(userId, () => withTimeout((async () => {
+      if (selector) {
+        return await tabState.page.locator(selector).first().innerText({ timeout: 5000 });
+      }
+      return await tabState.page.evaluate(() => document.body?.innerText || '');
+    })(), requestTimeoutMs(), 'text'));
+
+    const win = windowSnapshot(text, offset);
+    const response = {
+      url: tabState.page.url(),
+      text: win.text,
+      truncated: win.truncated,
+      totalChars: win.totalChars,
+      hasMore: win.hasMore,
+      nextOffset: win.nextOffset,
+    };
+    log('info', 'text read', { reqId: req.reqId, tabId: req.params.tabId, chars: win.totalChars });
+    res.json(response);
+  } catch (err) {
+    log('error', 'text read failed', { reqId: req.reqId, tabId: req.params.tabId, error: err.message });
+    handleRouteError(err, req, res);
+  }
+});
+
+// Structured element state -- computed style + ARIA flags, no screenshot needed
+// to tell e.g. a "pass" (green) rule from a "fail" (red) one.
+/**
+ * @openapi
+ * /tabs/{tabId}/state:
+ *   post:
+ *     tags: [Tabs]
+ *     summary: Structured element state (color, ARIA flags) without a screenshot
+ *     description: Reads computed style and ARIA state for elements matching each given selector -- covers cases plain text can't (a rule shown in red vs green, a checkbox's checked state, a field's aria-invalid) without needing a screenshot.
+ *     parameters:
+ *       - name: tabId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId, selectors]
+ *     responses:
+ *       200:
+ *         description: Per-selector element state.
+ *       404:
+ *         description: Tab not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+app.post('/tabs/:tabId/state', async (req, res) => {
+  try {
+    const { userId, selectors } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+    if (!Array.isArray(selectors) || selectors.length === 0) {
+      return res.status(400).json({ error: 'selectors must be a non-empty array' });
+    }
+    if (selectors.length > 20) {
+      return res.status(400).json({ error: 'at most 20 selectors per call' });
+    }
+    for (const selector of selectors) {
+      const selectorErr = selectorValidationError(selector);
+      if (selectorErr) throw invalidSelectorError(selectorErr);
+    }
+    const session = sessions.get(normalizeUserId(userId));
+    const found = session && findTab(session, req.params.tabId);
+    if (!found) return tabNotFoundResponse(res, req.params.tabId || req.body?.tabId);
+    session.lastAccess = Date.now();
+
+    const { tabState } = found;
+    tabState.toolCalls++; tabState.consecutiveTimeouts = 0; tabState.consecutiveFailures = 0;
+
+    const states = await withUserLimit(userId, () => withTimeout(
+      tabState.page.evaluate((selectors) => {
+        const MAX_MATCHES = 10;
+        const MAX_TEXT = 300;
+        return selectors.map((selector) => {
+          let elements;
+          try {
+            elements = Array.from(document.querySelectorAll(selector)).slice(0, MAX_MATCHES);
+          } catch (e) {
+            return { selector, error: String(e.message || e) };
+          }
+          const matches = elements.map((el) => {
+            const style = getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            const visible = rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+            const text = (el.textContent || '').trim().slice(0, MAX_TEXT);
+            return {
+              text,
+              visible,
+              color: style.color,
+              backgroundColor: style.backgroundColor,
+              classList: Array.from(el.classList || []),
+              disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
+              ariaChecked: el.getAttribute('aria-checked'),
+              ariaInvalid: el.getAttribute('aria-invalid'),
+              ariaPressed: el.getAttribute('aria-pressed'),
+              ariaSelected: el.getAttribute('aria-selected'),
+              ariaExpanded: el.getAttribute('aria-expanded'),
+            };
+          });
+          return { selector, count: matches.length, matches };
+        });
+      }, selectors),
+      requestTimeoutMs(),
+      'state'
+    ));
+
+    log('info', 'element state read', { reqId: req.reqId, tabId: req.params.tabId, selectorCount: selectors.length });
+    res.json({ url: tabState.page.url(), states });
+  } catch (err) {
+    log('error', 'element state read failed', { reqId: req.reqId, tabId: req.params.tabId, error: err.message });
     handleRouteError(err, req, res);
   }
 });
@@ -3784,16 +4060,20 @@ app.post('/tabs/:tabId/click', async (req, res) => {
   const tabId = req.params.tabId;
   
   try {
-    const { userId, ref, selector, coordinates, doubleClick = false } = req.body;
+    const { userId, ref, selector, coordinates, doubleClick = false, nth } = req.body;
     if (!userId) return res.status(400).json({ error: 'userId required' });
     const session = sessions.get(normalizeUserId(userId));
     const found = session && findTab(session, tabId);
     if (!found) return tabNotFoundResponse(res, req.params.tabId || req.body?.tabId);
     session.lastAccess = Date.now();
-    
+
     const { tabState } = found;
     tabState.toolCalls++; tabState.consecutiveTimeouts = 0; tabState.consecutiveFailures = 0;
-    
+    // Captured right before the click attempt so the catch block can tell a
+    // stale-locator error apart from a click that actually navigated the page
+    // (see the statusCode 422 recovery below).
+    let urlBeforeClick = null;
+
     const hasCoordinates = coordinates != null;
     if (!ref && !selector && !hasCoordinates) {
       return res.status(400).json({ error: 'ref, selector, or coordinates required' });
@@ -3807,6 +4087,12 @@ app.post('/tabs/:tabId/click', async (req, res) => {
     )) {
       return res.status(400).json({ error: 'coordinates.x and coordinates.y must be non-negative numbers' });
     }
+    if (nth != null && (!Number.isInteger(nth) || nth < 0)) {
+      return res.status(400).json({ error: 'nth must be a non-negative integer' });
+    }
+    if (nth != null && !selector) {
+      return res.status(400).json({ error: 'nth requires selector' });
+    }
     const selectorErr = selectorValidationError(selector);
     if (selectorErr) throw invalidSelectorError(selectorErr);
     
@@ -3816,6 +4102,7 @@ app.post('/tabs/:tabId/click', async (req, res) => {
       // On Google SERPs, skip the normal click attempt (always intercepted by overlays)
       // and go directly to force click -- saves 5s timeout per click
       const onGoogleSerp = isGoogleSerp(tabState.page.url());
+      urlBeforeClick = tabState.page.url();
       const doClick = (locatorOrSelector, isLocator) => clickLocator({
         tabState,
         locatorOrSelector,
@@ -3855,6 +4142,10 @@ app.post('/tabs/:tabId/click', async (req, res) => {
           throw new StaleRefsError(ref, maxRef, tabState.refs.size);
         }
         await doClick(locator, true);
+      } else if (nth != null) {
+        // Caller explicitly disambiguated a multi-match selector -- skip the
+        // string path's own :visible auto-narrowing and click this exact index.
+        await doClick(tabState.page.locator(selector).nth(nth), true);
       } else {
         await doClick(selector, false);
       }
@@ -3907,6 +4198,30 @@ app.post('/tabs/:tabId/click', async (req, res) => {
     res.json(result);
   } catch (err) {
     log('error', 'click failed', { reqId: req.reqId, tabId, error: err.message });
+    // Playwright's click() can still throw "element detached" (surfaced by
+    // lib/pointer.js as statusCode 422) even after the underlying browser
+    // click already fired and the page navigated -- its post-click
+    // actionability re-check finds the locator stale mid-navigation. Treat
+    // that as a false-negative: if the URL actually changed during this
+    // handler, the click worked, so report success instead of erroring out
+    // (an agent that trusts the error could otherwise retry and double-submit).
+    if (err.statusCode === 422 && urlBeforeClick) {
+      try {
+        const session = sessions.get(normalizeUserId(req.body.userId));
+        const found = session && findTab(session, tabId);
+        const currentUrl = found?.tabState?.page && !found.tabState.page.isClosed()
+          ? safePageUrl(found.tabState.page)
+          : null;
+        if (currentUrl && currentUrl !== urlBeforeClick) {
+          log('info', 'click recovered: page navigated despite detached-element error', { tabId, from: urlBeforeClick, to: currentUrl });
+          found.tabState.lastSnapshot = null;
+          found.tabState.refs = await refreshTabRefs(found.tabState, { reason: 'click_detached_recovery' }).catch(() => new Map());
+          return res.json({ ok: true, url: currentUrl, refsAvailable: found.tabState.refs.size > 0, recoveredFromError: 'element_detached_after_navigation' });
+        }
+      } catch (recoveryErr) {
+        log('warn', 'detached-element recovery check failed', { error: recoveryErr.message });
+      }
+    }
     if (err.code !== 'tab_timeout' && err.message?.includes('timed out')) {
       try {
         const session = sessions.get(normalizeUserId(req.body.userId));
@@ -3928,6 +4243,227 @@ app.post('/tabs/:tabId/click', async (req, res) => {
         log('warn', 'post-timeout refresh failed', { error: refreshErr.message });
       }
     }
+    handleRouteError(err, req, res);
+  }
+});
+
+// Batch: run several actions against one tab in a single round trip.
+/**
+ * @openapi
+ * /tabs/{tabId}/batch:
+ *   post:
+ *     tags: [Interaction]
+ *     summary: Run multiple actions in one round trip
+ *     description: |
+ *       Executes a sequence of click/type/wait/scroll/navigate/read_text actions against one tab in a
+ *       single request, so a multi-step interaction (e.g. click a field, type into it, wait for a
+ *       result) costs one round trip instead of one per action. Stops at the first failing action
+ *       unless continueOnError is true. Refs are refreshed once after the whole batch (not per
+ *       action) -- call bwl_snapshot afterward if you need refs for an element that appeared mid-batch.
+ *       This is a simplified/faster path: it does not include the Google-SERP-specific handling that
+ *       the individual bwl_click/bwl_navigate tools have, so prefer those for search result pages.
+ *     parameters:
+ *       - name: tabId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId, actions]
+ *     responses:
+ *       200:
+ *         description: Batch result -- one entry per action, in order.
+ *       404:
+ *         description: Tab not found.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+app.post('/tabs/:tabId/batch', async (req, res) => {
+  const tabId = req.params.tabId;
+  try {
+    const { userId, actions, continueOnError = false } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+    if (!Array.isArray(actions) || actions.length === 0) {
+      return res.status(400).json({ error: 'actions must be a non-empty array' });
+    }
+    if (actions.length > 20) {
+      return res.status(400).json({ error: 'at most 20 actions per batch' });
+    }
+    for (const selector of actions.map(a => a?.selector).filter(Boolean)) {
+      const selectorErr = selectorValidationError(selector);
+      if (selectorErr) throw invalidSelectorError(selectorErr);
+    }
+    const session = sessions.get(normalizeUserId(userId));
+    const found = session && findTab(session, tabId);
+    if (!found) return tabNotFoundResponse(res, tabId || req.body?.tabId);
+    session.lastAccess = Date.now();
+
+    const { tabState } = found;
+
+    const results = await withUserLimit(userId, () => withTabLock(tabId, async () => {
+      const out = [];
+      for (let i = 0; i < actions.length; i++) {
+        const action = actions[i] || {};
+        const type = action.type;
+        tabState.toolCalls++; tabState.consecutiveTimeouts = 0; tabState.consecutiveFailures = 0;
+        try {
+          let entry;
+          switch (type) {
+            case 'click': {
+              const { ref, selector, coordinates, doubleClick = false, nth } = action;
+              const hasCoordinates = coordinates != null;
+              if (!ref && !selector && !hasCoordinates) throw new Error('click requires ref, selector, or coordinates');
+              if (nth != null && (!Number.isInteger(nth) || nth < 0)) throw new Error('nth must be a non-negative integer');
+              if (hasCoordinates) {
+                await clickWithDownloadGuard(tabState, () => tabState.page.mouse.click(
+                  coordinates.x, coordinates.y, doubleClick ? { clickCount: 2 } : undefined
+                ));
+              } else {
+                let locatorOrSelector = selector;
+                let isLocator = false;
+                if (ref) {
+                  let locator = refToLocator(tabState.page, ref, tabState.refs);
+                  if (!locator) {
+                    tabState.refs = await refreshTabRefs(tabState, { reason: 'batch_click' });
+                    locator = refToLocator(tabState.page, ref, tabState.refs);
+                  }
+                  if (!locator) {
+                    const maxRef = tabState.refs.size > 0 ? `e${tabState.refs.size}` : 'none';
+                    throw new StaleRefsError(ref, maxRef, tabState.refs.size);
+                  }
+                  locatorOrSelector = locator;
+                  isLocator = true;
+                } else if (nth != null) {
+                  // Explicit disambiguation -- skip the string path's :visible auto-narrowing.
+                  locatorOrSelector = tabState.page.locator(selector).nth(nth);
+                  isLocator = true;
+                }
+                await clickLocator({
+                  tabState, locatorOrSelector, isLocator, doubleClick,
+                  forceFirst: false, remainingBudget: () => HANDLER_TIMEOUT_MS, withTimeout, log,
+                });
+              }
+              await tabState.page.waitForTimeout(300);
+              entry = { ok: true };
+              break;
+            }
+            case 'type': {
+              const { ref, selector, text, mode = 'fill', pressEnter = false, delay = 30 } = action;
+              if (typeof text !== 'string') throw new Error('type requires text');
+              if (mode === 'fill') {
+                let locator = null;
+                if (ref) {
+                  locator = refToLocator(tabState.page, ref, tabState.refs);
+                  if (!locator) {
+                    tabState.refs = await refreshTabRefs(tabState, { reason: 'batch_type' });
+                    locator = refToLocator(tabState.page, ref, tabState.refs);
+                  }
+                  if (!locator) {
+                    const maxRef = tabState.refs.size > 0 ? `e${tabState.refs.size}` : 'none';
+                    throw new StaleRefsError(ref, maxRef, tabState.refs.size);
+                  }
+                }
+                if (locator) await fillLocator(locator, text);
+                else if (selector) await fillLocator(tabState.page.locator(selector), text);
+                else throw new Error('type mode=fill requires ref or selector');
+              } else if (mode === 'keyboard') {
+                if (ref) {
+                  const locator = refToLocator(tabState.page, ref, tabState.refs);
+                  if (locator) await locator.focus({ timeout: 10000 });
+                } else if (selector) {
+                  await tabState.page.focus(selector, { timeout: 10000 });
+                }
+                await tabState.page.keyboard.type(text, { delay });
+              } else {
+                throw new Error("type mode must be 'fill' or 'keyboard'");
+              }
+              if (pressEnter) await tabState.page.keyboard.press('Enter');
+              entry = { ok: true };
+              break;
+            }
+            case 'wait': {
+              const { selector, text, url, state = 'visible', timeout = 10000, waitForNetwork = true, dismissConsent = false } = action;
+              if (!['attached', 'detached', 'visible', 'hidden'].includes(state)) {
+                throw new Error('state must be attached, detached, visible, or hidden');
+              }
+              const effectiveTimeout = Math.min(Number(timeout) || 10000, HANDLER_TIMEOUT_MS - 1000);
+              let condition = 'page';
+              if (selector) {
+                await tabState.page.locator(selector).first().waitFor({ state, timeout: effectiveTimeout });
+                condition = 'selector';
+              } else if (text) {
+                await tabState.page.getByText(text, { exact: false }).first().waitFor({ state, timeout: effectiveTimeout });
+                condition = 'text';
+              } else if (url) {
+                await tabState.page.waitForURL(url, { waitUntil: 'domcontentloaded', timeout: effectiveTimeout });
+                condition = 'url';
+              } else {
+                await waitForPageReady(tabState.page, { timeout: effectiveTimeout, waitForNetwork, dismissConsent });
+              }
+              if (condition !== 'page' && dismissConsent) await dismissConsentDialogs(tabState.page);
+              entry = { ok: true, condition };
+              break;
+            }
+            case 'scroll': {
+              const { direction, amount } = action;
+              if (!['up', 'down', 'left', 'right'].includes(direction)) {
+                throw new Error('scroll requires direction: up, down, left, or right');
+              }
+              const px = Number.isFinite(amount) ? amount : 400;
+              const dx = direction === 'left' ? -px : direction === 'right' ? px : 0;
+              const dy = direction === 'up' ? -px : direction === 'down' ? px : 0;
+              await tabState.page.mouse.wheel(dx, dy);
+              entry = { ok: true };
+              break;
+            }
+            case 'navigate': {
+              const { url } = action;
+              if (!url) throw new Error('navigate requires url');
+              const response = await tabState.page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAVIGATE_TIMEOUT_MS });
+              tabState.visitedUrls.add(tabState.page.url());
+              entry = { ok: true, url: tabState.page.url(), httpStatus: response?.status() ?? null };
+              break;
+            }
+            case 'read_text': {
+              const { selector } = action;
+              const text = selector
+                ? await tabState.page.locator(selector).first().innerText({ timeout: 5000 })
+                : await tabState.page.evaluate(() => document.body?.innerText || '');
+              entry = { ok: true, text: text.length > 4000 ? text.slice(0, 4000) + '…' : text, totalChars: text.length };
+              break;
+            }
+            default:
+              throw new Error(`unknown action type: ${type}`);
+          }
+          out.push({ index: i, type, ...entry });
+        } catch (err) {
+          out.push({ index: i, type, ok: false, error: err.message });
+          if (!continueOnError) break;
+        }
+      }
+      tabState.lastSnapshot = null;
+      try {
+        tabState.refs = await refreshTabRefs(tabState, { reason: 'batch_final' });
+      } catch {
+        tabState.refs = tabState.refs || new Map();
+      }
+      return out;
+    }, HANDLER_TIMEOUT_MS, () => destroyTimedOutTab(session, tabId, 'operation_timeout', userId)));
+
+    const stoppedEarly = results.length < actions.length;
+    const allOk = results.every(r => r.ok);
+    log('info', 'batch', { reqId: req.reqId, tabId, actionCount: actions.length, ranCount: results.length, stoppedEarly, allOk });
+    pluginEvents.emit('tab:batch', { userId, tabId, actionCount: actions.length, ranCount: results.length });
+    res.json({ ok: allOk, url: tabState.page.url(), refsAvailable: tabState.refs.size > 0, results, stoppedEarly });
+  } catch (err) {
+    log('error', 'batch failed', { reqId: req.reqId, tabId, error: err.message });
     handleRouteError(err, req, res);
   }
 });
@@ -5500,7 +6036,26 @@ app.post('/tabs/:tabId/evaluate', express.json({ limit: CONFIG.evaluateMaxBodySi
     pluginEvents.emit('tab:evaluate', { userId, tabId: req.params.tabId, expression });
     const result = await withUserLimit(userId, () => withTabLock(
       req.params.tabId,
-      () => tabState.page.evaluate(expression),
+      () => tabState.page.evaluate(expression).catch((err) => {
+        // Playwright/Firefox prefixes errors thrown while compiling or running
+        // the caller's own expression with "evaluate: " (e.g. a bare
+        // `const x = 1; return x + 1;` fails with "evaluate: return not in
+        // function" because it isn't wrapped in a function body). That's
+        // entirely about the caller's JS, not a server internal, so surface
+        // it plainly instead of a generic 500 -- with a concrete fix for the
+        // most common case (multi-statement code needs an IIFE).
+        if (typeof err?.message === 'string' && /^evaluate: /.test(err.message)) {
+          const reason = err.message.replace(/^evaluate: /, '');
+          const hint = /return not in function/i.test(reason)
+            ? ' Multi-statement code must be wrapped as an IIFE, e.g. (function(){ ...; return value; })()'
+            : '';
+          throw Object.assign(new Error(`Expression failed: ${reason}.${hint}`), {
+            code: 'evaluate_error',
+            statusCode: 400,
+          });
+        }
+        throw err;
+      }),
       requestTimeoutMs(),
       () => destroyTimedOutTab(session, req.params.tabId, 'operation_timeout', userId),
     ));

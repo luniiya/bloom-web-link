@@ -93,7 +93,10 @@ describe('launch compatibility source contract', () => {
     expect(geoipFallback).toMatch(/GeoLite\|MaxMind\|geolocation/);
     expect(geoipFallback).toContain('public proxy IP address');
     expect(serverSource).toContain('GEOIP_SETUP_TIMEOUT_MS = 10000');
-    expect(geoipFallback).toContain("withTimeout(launchOptions(baseOptions), GEOIP_SETUP_TIMEOUT_MS, 'GeoIP setup')");
+    // addons is spread into its own array copy per attempt so a retry doesn't
+    // double-append camoufox-js's default addons onto the first attempt's array.
+    expect(geoipFallback).toContain("addons: [...(baseOptions.addons ?? [])]");
+    expect(geoipFallback).toContain("GEOIP_SETUP_TIMEOUT_MS,\n      'GeoIP setup'");
     expect(geoipFallback).toContain('geoip: false');
     expect(launchBrowser).toContain('buildLaunchOptionsWithGeoipFallback');
   });

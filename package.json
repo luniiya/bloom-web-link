@@ -87,6 +87,10 @@
         "description": "Get accessibility snapshot with element refs"
       },
       {
+        "name": "bwl_read_text",
+        "description": "Cheap text-only page read (no tree, no refs, no screenshot)"
+      },
+      {
         "name": "bwl_click",
         "description": "Click by ref, CSS selector, or viewport coordinates"
       },
@@ -101,6 +105,10 @@
       {
         "name": "bwl_type",
         "description": "Type text into an element"
+      },
+      {
+        "name": "bwl_select",
+        "description": "Select an option in a native <select> dropdown"
       },
       {
         "name": "bwl_navigate",
@@ -129,6 +137,14 @@
       {
         "name": "bwl_import_cookies",
         "description": "Import Netscape cookie file (requires BWL_API_KEY)"
+      },
+      {
+        "name": "bwl_element_state",
+        "description": "Computed style + ARIA state for selectors, without a screenshot"
+      },
+      {
+        "name": "bwl_batch",
+        "description": "Run several click/type/wait/scroll/navigate/read_text actions in one call"
       }
     ]
   },
@@ -156,6 +172,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "adm-zip": "^0.6.1",
     "better-sqlite3": "13.0.1",
     "camoufox-js": "0.11.5",
     "express": "^5.2.1",
