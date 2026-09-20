@@ -1,20 +1,20 @@
 services:
-  camofox:
+  bwl:
     build:
       context: .
-    image: camofox-browser:local
+    image: bloom-web-link:local
     restart: unless-stopped
     shm_size: 2gb
     ports:
       - "127.0.0.1:9377:9377"
       - "127.0.0.1:6080:6080"
     environment:
-      CAMOFOX_ACCESS_KEY: ${CAMOFOX_ACCESS_KEY:-}
-      CAMOFOX_API_KEY: ${CAMOFOX_API_KEY:-}
-      CAMOFOX_ADMIN_KEY: ${CAMOFOX_ADMIN_KEY:-}
-      CAMOFOX_CRASH_REPORT_ENABLED: ${CAMOFOX_CRASH_REPORT_ENABLED:-false}
+      BWL_ACCESS_KEY: ${BWL_ACCESS_KEY:-}
+      BWL_API_KEY: ${BWL_API_KEY:-}
+      BWL_ADMIN_KEY: ${BWL_ADMIN_KEY:-}
+      BWL_CRASH_REPORT_ENABLED: ${BWL_CRASH_REPORT_ENABLED:-false}
     volumes:
-      - camofox-data:/root/.camofox
+      - bwl-data:/root/.bwl
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9377/gateway/health"]
       interval: 10s
@@ -23,4 +23,4 @@ services:
       start_period: 30s
 
 volumes:
-  camofox-data:
+  bwl-data:

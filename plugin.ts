@@ -171,7 +171,7 @@ async function fetchApi(
   options: RequestInit = {}
 ): Promise<unknown> {
   // Forward the global access key so plugin traffic is accepted by REST servers
-  // gated with CAMOFOX_ACCESS_KEY. /health is exempt server-side, so attaching
+  // gated with BWL_ACCESS_KEY. /health is exempt server-side, so attaching
   // the header to health checks is harmless.
   const cfg = loadConfig();
   const headers: Record<string, string> = {
@@ -196,7 +196,7 @@ export default function register(api: PluginApi) {
   const baseUrl = cfg.url || `http://localhost:${port}`;
   const autoStart = cfg.autoStart !== false; // default true
   const pluginDir = getPluginDir();
-  const fallbackUserId = `camofox-${randomUUID()}`;
+  const fallbackUserId = `bwl-${randomUUID()}`;
 
   // Auto-start server if configured (default: true)
   if (autoStart) {
@@ -241,7 +241,7 @@ export default function register(api: PluginApi) {
 
 
   api.registerCommand({
-    name: "camofox",
+    name: "bwl",
     description: "Camoufox browser server control (status, start, stop)",
     handler: async (args) => {
       const subcommand = args[0] || "status";
@@ -273,7 +273,7 @@ export default function register(api: PluginApi) {
           if (serverProcess) {
             serverProcess.kill();
             serverProcess = null;
-            api.logger?.info?.("Stopped camofox-browser server");
+            api.logger?.info?.("Stopped bloom-web-link server");
           } else {
             api.logger?.info?.("No managed server process running");
           }
@@ -287,7 +287,7 @@ export default function register(api: PluginApi) {
   // Gateway methods expose health/status to gateway clients. Gateway handlers
   // answer through respond() rather than returning a value.
   api.registerGatewayMethod(
-    "camofox.health",
+    "bwl.health",
     async ({ respond }) => {
       try {
         const health = (await fetchApi(baseUrl, "/health")) as Record<string, unknown>;
@@ -300,7 +300,7 @@ export default function register(api: PluginApi) {
   );
 
   api.registerGatewayMethod(
-    "camofox.status",
+    "bwl.status",
     async ({ respond }) => {
       const running = await checkServerRunning(baseUrl);
       respond(true, {
@@ -314,15 +314,15 @@ export default function register(api: PluginApi) {
     { scope: "operator.admin" }
   );
 
-  // Register CLI subcommands (openclaw camofox ...)
+  // Register CLI subcommands (openclaw bwl ...)
   if (api.registerCli) {
     api.registerCli(
       ({ program }) => {
-        const camofox = program
-          .command("camofox")
+        const bwl = program
+          .command("bwl")
           .description("Camoufox anti-detection browser automation");
 
-        camofox
+        bwl
           .command("status")
           .description("Show server status")
           .action(async () => {
@@ -341,13 +341,13 @@ export default function register(api: PluginApi) {
               console.log(`Camoufox server: not reachable`);
               console.log(`  URL: ${baseUrl}`);
               console.log(`  Managed: ${serverProcess !== null}`);
-              console.log(`  Hint: Run 'openclaw camofox start' to start the server`);
+              console.log(`  Hint: Run 'openclaw bwl start' to start the server`);
             }
           });
 
-        camofox
+        bwl
           .command("start")
-          .description("Start the camofox server")
+          .description("Start the bwl server")
           .action(async () => {
             if (serverProcess) {
               console.log("Camoufox server already running (managed by plugin)");
@@ -358,7 +358,7 @@ export default function register(api: PluginApi) {
               return;
             }
             try {
-              console.log(`Starting camofox server on port ${port}...`);
+              console.log(`Starting bwl server on port ${port}...`);
               serverProcess = await startServer(pluginDir, port, api.logger, cfg);
               console.log(`Camoufox server started at ${baseUrl}`);
             } catch (err) {
@@ -367,22 +367,22 @@ export default function register(api: PluginApi) {
             }
           });
 
-        camofox
+        bwl
           .command("stop")
-          .description("Stop the camofox server")
+          .description("Stop the bwl server")
           .action(async () => {
             if (serverProcess) {
               serverProcess.kill();
               serverProcess = null;
-              console.log("Stopped camofox server");
+              console.log("Stopped bwl server");
             } else {
               console.log("No managed server process running");
             }
           });
 
-        camofox
+        bwl
           .command("configure")
-          .description("Configure camofox plugin settings")
+          .description("Configure bwl plugin settings")
           .action(async () => {
             console.log("Camoufox Browser Configuration");
             console.log("================================");
@@ -396,21 +396,21 @@ export default function register(api: PluginApi) {
             console.log("");
             console.log("  plugins:");
             console.log("    entries:");
-            console.log("      camofox-browser:");
+            console.log("      bloom-web-link:");
             console.log("        enabled: true");
             console.log("        config:");
             console.log("          port: 9377");
             console.log("          autoStart: true");
             console.log("");
-            console.log("To use camofox as the ONLY browser tool, disable the built-in:");
+            console.log("To use bwl as the ONLY browser tool, disable the built-in:");
             console.log("");
             console.log("  tools:");
             console.log('    deny: ["browser"]');
             console.log("");
-            console.log("This removes OpenClaw's built-in browser tool, leaving camofox tools.");
+            console.log("This removes OpenClaw's built-in browser tool, leaving bwl tools.");
           });
 
-        camofox
+        bwl
           .command("tabs")
           .description("List active browser tabs")
           .option("--user <userId>", "Filter by user ID")
@@ -436,7 +436,7 @@ export default function register(api: PluginApi) {
             }
           });
       },
-      { commands: ["camofox"] }
+      { commands: ["bwl"] }
     );
   }
 }

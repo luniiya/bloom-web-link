@@ -26,7 +26,7 @@ export function unauthorized(): Response {
   return json(
     { error: "Unauthorized" },
     401,
-    { "WWW-Authenticate": 'Bearer realm="camofox"' },
+    { "WWW-Authenticate": 'Bearer realm="bwl"' },
   );
 }
 

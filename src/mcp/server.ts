@@ -26,7 +26,7 @@ function cors(response: Response): Response {
   headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   headers.set(
     "Access-Control-Allow-Headers",
-    "Authorization, Content-Type, Last-Event-ID, MCP-Protocol-Version, MCP-Session-Id, X-Camofox-User-Id",
+    "Authorization, Content-Type, Last-Event-ID, MCP-Protocol-Version, MCP-Session-Id, X-BWL-User-Id",
   );
   headers.set("Access-Control-Expose-Headers", "MCP-Session-Id, MCP-Protocol-Version");
   return new Response(response.body, { status: response.status, headers });
@@ -34,7 +34,7 @@ function cors(response: Response): Response {
 
 function createProtocolServer(config: ContainerConfig, userId: string): Server {
   const server = new Server(
-    { name: "camofox-browser", version: config.packageVersion },
+    { name: "bloom-web-link", version: config.packageVersion },
     {
       capabilities: { tools: {} },
       instructions: "Use snapshots to obtain refs, then click/type with those refs. Each HTTP MCP session has isolated browser storage.",
@@ -71,7 +71,7 @@ function createProtocolServer(config: ContainerConfig, userId: string): Server {
       return { content: adaptResponse(spec, payload) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return { isError: true, content: [{ type: "text", text: `camofox error: ${message}` }] };
+      return { isError: true, content: [{ type: "text", text: `bwl error: ${message}` }] };
     }
   });
 
@@ -98,7 +98,7 @@ export function createMcpHandler(config: ContainerConfig) {
     }
 
     if (!transport && request.method === "POST" && isInitializeRequest(parsedBody)) {
-      const requestedUserId = safeUserId(request.headers.get("x-camofox-user-id"));
+      const requestedUserId = safeUserId(request.headers.get("x-bwl-user-id"));
       const userId = requestedUserId || `mcp-${randomUUID()}`;
       const closeBrowserSession = async (id: string) => {
         transports.delete(id);

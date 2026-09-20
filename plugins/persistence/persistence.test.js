@@ -12,7 +12,7 @@ describe('profile persistence helpers', () => {
   let tmpDir;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'camofox-persistence-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bwl-persistence-'));
   });
 
   afterEach(async () => {

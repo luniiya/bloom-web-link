@@ -14,7 +14,7 @@ import {
 } from '../../lib/tracing.js';
 
 function makeTempBase() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'camofox-traces-test-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'bwl-traces-test-'));
 }
 
 describe('tracing', () => {

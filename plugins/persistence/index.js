@@ -1,10 +1,10 @@
 /**
- * Persistence plugin for camofox-browser.
+ * Persistence plugin for bloom-web-link.
  *
  * Saves and restores per-user browser storage state (cookies + localStorage
  * + IndexedDB) across session restarts using Playwright's storageState API.
  *
- * Configuration (camofox.config.json):
+ * Configuration (bwl.config.json):
  *   {
  *     "plugins": {
  *       "persistence": {
@@ -16,7 +16,7 @@
  *   }
  *
  * The profile directory can also be set via environment variable:
- *   CAMOFOX_PROFILE_DIR=/data/profiles
+ *   BWL_PROFILE_DIR=/data/profiles
  *
  * Each userId gets a deterministic SHA256-hashed subdirectory under profileDir.
  * Storage state is checkpointed on cookie import, session close, and shutdown.
@@ -49,8 +49,8 @@ async function removeIfExists(p) {
 export async function register(app, ctx, pluginConfig = {}) {
   const { events, config, log } = ctx;
 
-  // Resolve profileDir: env var > plugin config > global config default (~/.camofox/profiles)
-  const profileDir = process.env.CAMOFOX_PROFILE_DIR || pluginConfig.profileDir || config.profileDir;
+  // Resolve profileDir: env var > plugin config > global config default (~/.bwl/profiles)
+  const profileDir = process.env.BWL_PROFILE_DIR || pluginConfig.profileDir || config.profileDir;
   if (!profileDir) {
     log('warn', 'persistence plugin: no profileDir configured, plugin disabled');
     return;

@@ -1,24 +1,24 @@
 {
-  "name": "@askjo/camofox-browser-mcp",
+  "name": "@askjo/bloom-web-link-mcp",
   "version": "1.16.0",
-  "description": "Standalone stdio MCP server exposing the camofox-browser REST API as MCP tools (Claude Code, Codex, agy, Cursor, opencode). Proxies to an already-running camofox-browser REST server — does not itself require the browser binary, Playwright, or the core server's dependencies. Initial MCP implementation contributed by @epicsagas.",
+  "description": "Standalone stdio MCP server exposing the bloom-web-link REST API as MCP tools (Claude Code, Codex, agy, Cursor, opencode). Proxies to an already-running bloom-web-link REST server — does not itself require the browser binary, Playwright, or the core server's dependencies. Initial MCP implementation contributed by @epicsagas.",
   "type": "module",
   "main": "server.mjs",
   "license": "MIT",
   "author": "Jo Inc <oss@askjo.ai>",
-  "homepage": "https://github.com/jo-inc/camofox-browser/tree/master/mcp#readme",
+  "homepage": "https://github.com/jo-inc/bloom-web-link/tree/master/mcp#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jo-inc/camofox-browser.git",
+    "url": "git+https://github.com/jo-inc/bloom-web-link.git",
     "directory": "mcp"
   },
   "bugs": {
-    "url": "https://github.com/jo-inc/camofox-browser/issues"
+    "url": "https://github.com/jo-inc/bloom-web-link/issues"
   },
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "camofox",
+    "bwl",
     "camoufox",
     "browser-automation",
     "claude-code",
@@ -34,7 +34,7 @@
     "darwin"
   ],
   "bin": {
-    "camofox-browser-mcp": "server.mjs"
+    "bloom-web-link-mcp": "server.mjs"
   },
   "files": [
     "server.mjs",

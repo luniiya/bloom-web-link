@@ -9,7 +9,7 @@ describe('persistence plugin', () => {
   let tmpDir, events, ctx, mockApp;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'camofox-persist-plugin-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bwl-persist-plugin-'));
     events = createPluginEvents();
     mockApp = { delete: jest.fn() };
     ctx = {
@@ -198,10 +198,10 @@ describe('persistence plugin', () => {
     });
   });
 
-  test('env var CAMOFOX_PROFILE_DIR overrides pluginConfig', async () => {
+  test('env var BWL_PROFILE_DIR overrides pluginConfig', async () => {
     const envDir = path.join(tmpDir, 'env-override');
-    const orig = process.env.CAMOFOX_PROFILE_DIR;
-    process.env.CAMOFOX_PROFILE_DIR = envDir;
+    const orig = process.env.BWL_PROFILE_DIR;
+    process.env.BWL_PROFILE_DIR = envDir;
     try {
       await register(mockApp, ctx, { profileDir: '/should/not/use' });
       expect(ctx.log).toHaveBeenCalledWith(
@@ -210,8 +210,8 @@ describe('persistence plugin', () => {
         expect.objectContaining({ profileDir: envDir })
       );
     } finally {
-      if (orig === undefined) delete process.env.CAMOFOX_PROFILE_DIR;
-      else process.env.CAMOFOX_PROFILE_DIR = orig;
+      if (orig === undefined) delete process.env.BWL_PROFILE_DIR;
+      else process.env.BWL_PROFILE_DIR = orig;
     }
   });
 

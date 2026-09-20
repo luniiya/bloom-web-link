@@ -8,21 +8,21 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '..', '..');
-const SERVER = process.env.CAMOFOX_MCP_SERVER || resolve(ROOT, 'mcp', 'server.mjs');
+const SERVER = process.env.BWL_MCP_SERVER || resolve(ROOT, 'mcp', 'server.mjs');
 const EXPECTED_TOOLS = [
-  'camofox_create_tab',
-  'camofox_snapshot',
-  'camofox_click',
-  'camofox_wait',
-  'camofox_mouse',
-  'camofox_type',
-  'camofox_navigate',
-  'camofox_scroll',
-  'camofox_screenshot',
-  'camofox_close_tab',
-  'camofox_evaluate',
-  'camofox_list_tabs',
-  'camofox_import_cookies',
+  'bwl_create_tab',
+  'bwl_snapshot',
+  'bwl_click',
+  'bwl_wait',
+  'bwl_mouse',
+  'bwl_type',
+  'bwl_navigate',
+  'bwl_scroll',
+  'bwl_screenshot',
+  'bwl_close_tab',
+  'bwl_evaluate',
+  'bwl_list_tabs',
+  'bwl_import_cookies',
 ];
 
 let failures = 0;
@@ -36,7 +36,7 @@ function check(name, condition, detail = '') {
 
 async function main() {
   console.log('mcp/server.mjs smoke test');
-  const client = new Client({ name: 'camofox-smoke-test', version: '1.0.0' });
+  const client = new Client({ name: 'bwl-smoke-test', version: '1.0.0' });
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [SERVER],
@@ -46,7 +46,7 @@ async function main() {
       HOME: process.env.HOME || '',
       USER: process.env.USER || '',
       NODE_OPTIONS: process.env.NODE_OPTIONS || '',
-      CAMOFOX_BASE_URL: 'http://localhost:1',
+      BWL_BASE_URL: 'http://localhost:1',
     },
     stderr: 'pipe',
   });
@@ -56,7 +56,7 @@ async function main() {
 
   try {
     await client.connect(transport);
-    check('handshake returns server name', client.getServerVersion()?.name === 'camofox-browser');
+    check('handshake returns server name', client.getServerVersion()?.name === 'bloom-web-link');
 
     const { tools } = await client.listTools();
     const names = tools.map(tool => tool.name).sort();
@@ -68,7 +68,7 @@ async function main() {
       check(`"${tool.name}" has inputSchema.object`, tool.inputSchema?.type === 'object' && tool.inputSchema.properties !== undefined);
     }
 
-    const navigate = tools.find(tool => tool.name === 'camofox_navigate');
+    const navigate = tools.find(tool => tool.name === 'bwl_navigate');
     const macros = navigate.inputSchema.properties.macro.enum;
     check('navigate exposes google + reddit macros', macros.includes('@google_search') && macros.includes('@reddit_search'));
     check('navigate has >=13 macros', macros.length >= 13, `got ${macros.length}`);

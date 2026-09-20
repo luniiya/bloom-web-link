@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const tempDirs = [];
 
 function makeExecutable() {
-  const dir = mkdtempSync(join(tmpdir(), 'camofox-postinstall-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'bwl-postinstall-test-'));
   tempDirs.push(dir);
   const executable = join(dir, 'camoufox-bin');
   writeFileSync(executable, '#!/bin/sh\nexit 0\n');
@@ -44,7 +44,7 @@ describe('postinstall external executable handling', () => {
     expect(externalExecutableFromEnv({
       CAMOUFOX_EXECUTABLE: '/primary',
       CAMOUFOX_EXECUTABLE_PATH: '/compat',
-      CAMOFOX_EXECUTABLE_PATH: '/legacy',
+      BWL_EXECUTABLE_PATH: '/legacy',
     })).toEqual({ name: 'CAMOUFOX_EXECUTABLE', value: '/primary' });
   });
 
@@ -74,10 +74,10 @@ describe('postinstall fetch child env', () => {
       HTTPS_PROXY: 'http://proxy.example:8080',
       npm_config_https_proxy: 'http://npm-proxy.example:8080',
       NPM_CONFIG_REGISTRY: 'https://registry.npmjs.org/',
-      CAMOFOX_SKIP_DOWNLOAD: '0',
+      BWL_SKIP_DOWNLOAD: '0',
       CAMOUFOX_EXECUTABLE: '/opt/camoufox/camoufox-bin',
       CAMOUFOX_EXECUTABLE_PATH: '/compat/camoufox-bin',
-      CAMOFOX_EXECUTABLE_PATH: '/legacy/camoufox-bin',
+      BWL_EXECUTABLE_PATH: '/legacy/camoufox-bin',
       CAMOUFOX_CACHE_DIR: '/opt/camoufox-cache',
       GITHUB_TOKEN: 'github-token',
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1',
@@ -93,10 +93,10 @@ describe('postinstall fetch child env', () => {
       HTTPS_PROXY: 'http://proxy.example:8080',
       npm_config_https_proxy: 'http://npm-proxy.example:8080',
       NPM_CONFIG_REGISTRY: 'https://registry.npmjs.org/',
-      CAMOFOX_SKIP_DOWNLOAD: '0',
+      BWL_SKIP_DOWNLOAD: '0',
       CAMOUFOX_EXECUTABLE: '/opt/camoufox/camoufox-bin',
       CAMOUFOX_EXECUTABLE_PATH: '/compat/camoufox-bin',
-      CAMOFOX_EXECUTABLE_PATH: '/legacy/camoufox-bin',
+      BWL_EXECUTABLE_PATH: '/legacy/camoufox-bin',
       CAMOUFOX_CACHE_DIR: '/opt/camoufox-cache',
       GITHUB_TOKEN: 'github-token',
     });

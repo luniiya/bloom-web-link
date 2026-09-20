@@ -1,25 +1,25 @@
 {
-  "name": "@askjo/camofox-browser",
+  "name": "@askjo/bloom-web-link",
   "version": "1.16.0",
   "description": "Headless browser automation server and OpenClaw plugin for AI agents - anti-detection, element refs, and session isolation",
   "type": "module",
   "main": "server.js",
   "license": "MIT",
   "author": "Jo Inc <oss@askjo.ai>",
-  "homepage": "https://github.com/jo-inc/camofox-browser#readme",
+  "homepage": "https://github.com/jo-inc/bloom-web-link#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jo-inc/camofox-browser.git"
+    "url": "git+https://github.com/jo-inc/bloom-web-link.git"
   },
   "bugs": {
-    "url": "https://github.com/jo-inc/camofox-browser/issues"
+    "url": "https://github.com/jo-inc/bloom-web-link/issues"
   },
   "keywords": [
     "browser",
     "automation",
     "headless",
     "scraping",
-    "camofox",
+    "bwl",
     "camoufox",
     "anti-detection",
     "ai-agent",
@@ -44,7 +44,7 @@
     "src/",
     "lib/",
     "plugins/",
-    "camofox.config.json",
+    "bwl.config.json",
     "plugin.ts",
     "plugin.js",
     "dist/plugin.js",
@@ -79,56 +79,56 @@
     },
     "tools": [
       {
-        "name": "camofox_create_tab",
+        "name": "bwl_create_tab",
         "description": "Open a new browser tab at a URL"
       },
       {
-        "name": "camofox_snapshot",
+        "name": "bwl_snapshot",
         "description": "Get accessibility snapshot with element refs"
       },
       {
-        "name": "camofox_click",
+        "name": "bwl_click",
         "description": "Click by ref, CSS selector, or viewport coordinates"
       },
       {
-        "name": "camofox_wait",
+        "name": "bwl_wait",
         "description": "Wait for page readiness, a selector, text, or URL"
       },
       {
-        "name": "camofox_mouse",
+        "name": "bwl_mouse",
         "description": "Move, hover, or drag the native browser mouse"
       },
       {
-        "name": "camofox_type",
+        "name": "bwl_type",
         "description": "Type text into an element"
       },
       {
-        "name": "camofox_navigate",
+        "name": "bwl_navigate",
         "description": "Navigate to URL or search macro"
       },
       {
-        "name": "camofox_scroll",
+        "name": "bwl_scroll",
         "description": "Scroll page up/down/left/right"
       },
       {
-        "name": "camofox_screenshot",
+        "name": "bwl_screenshot",
         "description": "Capture page screenshot"
       },
       {
-        "name": "camofox_close_tab",
+        "name": "bwl_close_tab",
         "description": "Close a browser tab"
       },
       {
-        "name": "camofox_evaluate",
+        "name": "bwl_evaluate",
         "description": "Execute JavaScript in a Camoufox tab page context"
       },
       {
-        "name": "camofox_list_tabs",
+        "name": "bwl_list_tabs",
         "description": "List open tabs for a user"
       },
       {
-        "name": "camofox_import_cookies",
-        "description": "Import Netscape cookie file (requires CAMOFOX_API_KEY)"
+        "name": "bwl_import_cookies",
+        "description": "Import Netscape cookie file (requires BWL_API_KEY)"
       }
     ]
   },
@@ -190,7 +190,7 @@
     "hono": "4.13.5"
   },
   "bin": {
-    "camofox-browser": "./bin/camofox-browser.js",
-    "camofox-browser-mcp": "./mcp/server.mjs"
+    "bloom-web-link": "./bin/bloom-web-link.js",
+    "bloom-web-link-mcp": "./mcp/server.mjs"
   }
 }

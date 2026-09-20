@@ -26,7 +26,7 @@ import { pathToFileURL } from 'node:url';
 const EXTERNAL_EXECUTABLE_ENV_VARS = [
   'CAMOUFOX_EXECUTABLE',
   'CAMOUFOX_EXECUTABLE_PATH',
-  'CAMOFOX_EXECUTABLE_PATH',
+  'BWL_EXECUTABLE_PATH',
 ];
 
 const FETCH_CHILD_ENV_VARS = [
@@ -72,10 +72,10 @@ const FETCH_CHILD_ENV_VARS = [
   'NPM_CONFIG_FETCH_RETRY_MINTIMEOUT',
   'NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT',
   'NPM_CONFIG_FETCH_TIMEOUT',
-  'CAMOFOX_SKIP_DOWNLOAD',
+  'BWL_SKIP_DOWNLOAD',
   'CAMOUFOX_EXECUTABLE',
   'CAMOUFOX_EXECUTABLE_PATH',
-  'CAMOFOX_EXECUTABLE_PATH',
+  'BWL_EXECUTABLE_PATH',
   'CAMOUFOX_CACHE_DIR',
   'GITHUB_TOKEN',
 ];
@@ -88,7 +88,7 @@ function camoufoxCacheDir() {
 }
 
 function warn(message) {
-  process.stderr.write(`[camofox-browser] postinstall warning: ${message}\n`);
+  process.stderr.write(`[bloom-web-link] postinstall warning: ${message}\n`);
 }
 
 function fail(message) {
@@ -126,9 +126,9 @@ function assertExternalExecutable(path) {
 }
 
 export async function main() {
-  // Skip binary download entirely when CAMOFOX_SKIP_DOWNLOAD is set.
-  if (process.env.CAMOFOX_SKIP_DOWNLOAD === '1' || process.env.CAMOFOX_SKIP_DOWNLOAD === 'true') {
-    process.stderr.write('[camofox-browser] postinstall: skipping binary download (CAMOFOX_SKIP_DOWNLOAD=1)\n');
+  // Skip binary download entirely when BWL_SKIP_DOWNLOAD is set.
+  if (process.env.BWL_SKIP_DOWNLOAD === '1' || process.env.BWL_SKIP_DOWNLOAD === 'true') {
+    process.stderr.write('[bloom-web-link] postinstall: skipping binary download (BWL_SKIP_DOWNLOAD=1)\n');
     return;
   }
 
@@ -136,7 +136,7 @@ export async function main() {
   if (externalExecutable) {
     assertExternalExecutable(externalExecutable.value);
     process.stdout.write(
-      `[camofox-browser] postinstall: ${externalExecutable.name} is set; skipping bundled Camoufox download.\n`
+      `[bloom-web-link] postinstall: ${externalExecutable.name} is set; skipping bundled Camoufox download.\n`
     );
     return;
   }
@@ -144,7 +144,7 @@ export async function main() {
   // Check if binary is already cached — skip download entirely if so.
   const versionFile = join(camoufoxCacheDir(), 'version.json');
   if (existsSync(versionFile)) {
-    process.stdout.write('[camofox-browser] postinstall: Camoufox binary already cached.\n');
+    process.stdout.write('[bloom-web-link] postinstall: Camoufox binary already cached.\n');
     return;
   }
 

@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker relay for camofox-browser crash reports.
+ * Cloudflare Worker relay for bloom-web-link crash reports.
  *
  * Accepts anonymized crash/hang/stall reports from clients and files them as
  * GitHub Issues using a GitHub App. The private key lives here as an env secret
@@ -13,14 +13,14 @@
  * Env secrets (set via `wrangler secret put`):
  *   GH_APP_ID, GH_INSTALL_ID, GH_PRIVATE_KEY
  *
- * Source: https://github.com/jo-inc/camofox-browser/blob/main/workers/crash-reporter/index.ts
+ * Source: https://github.com/jo-inc/bloom-web-link/blob/main/workers/crash-reporter/index.ts
  */
 
 interface Env {
   GH_APP_ID: string;
   GH_INSTALL_ID: string;
   GH_PRIVATE_KEY: string;
-  GH_REPO?: string; // default: jo-inc/camofox-browser
+  GH_REPO?: string; // default: jo-inc/bloom-web-link
 }
 
 // --- Rate limiting (in-memory, per-isolate) ---
@@ -83,7 +83,7 @@ async function getInstallationToken(env: Env): Promise<string | null> {
       headers: {
         Authorization: `Bearer ${jwt}`,
         Accept: "application/vnd.github+json",
-        "User-Agent": "camofox-telemetry",
+        "User-Agent": "bwl-telemetry",
       },
     },
   );
@@ -153,7 +153,7 @@ async function findExistingIssue(token: string, repo: string, signature: string)
     headers: {
       Authorization: `token ${token}`,
       Accept: "application/vnd.github+json",
-      "User-Agent": "camofox-telemetry",
+      "User-Agent": "bwl-telemetry",
     },
   });
   if (!resp.ok) return null;
@@ -168,7 +168,7 @@ async function commentOnIssue(token: string, repo: string, issueNumber: number, 
       Authorization: `token ${token}`,
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
-      "User-Agent": "camofox-telemetry",
+      "User-Agent": "bwl-telemetry",
     },
     body: JSON.stringify({ body: body.slice(0, 4096) }),
   });
@@ -184,7 +184,7 @@ async function createIssue(
       Authorization: `token ${token}`,
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
-      "User-Agent": "camofox-telemetry",
+      "User-Agent": "bwl-telemetry",
     },
     body: JSON.stringify({ title, body, labels }),
   });
@@ -222,7 +222,7 @@ export default {
       return Response.json({
         commit: COMMIT_SHA,
         sha256: SOURCE_SHA256,
-        source: "https://github.com/jo-inc/camofox-browser/blob/main/workers/crash-reporter/index.ts",
+        source: "https://github.com/jo-inc/bloom-web-link/blob/main/workers/crash-reporter/index.ts",
       }, { headers: cors });
     }
 
@@ -255,7 +255,7 @@ export default {
           return Response.json({ error: "github auth failed" }, { status: 502, headers: cors });
         }
 
-        const repo = env.GH_REPO || "jo-inc/camofox-browser";
+        const repo = env.GH_REPO || "jo-inc/bloom-web-link";
 
         // Check for existing issue with same signature
         const existing = await findExistingIssue(token, repo, payload.signature);

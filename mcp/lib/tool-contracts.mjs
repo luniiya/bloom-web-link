@@ -1,5 +1,5 @@
 /**
- * Canonical tool contracts for the camofox-browser REST API.
+ * Canonical tool contracts for the bloom-web-link REST API.
  *
  * Single source of truth shared by two hosts that expose the same tools:
  *   - mcp/server.mjs   (stdio MCP server for Claude Code, Codex, agy, Cursor, opencode)
@@ -11,10 +11,10 @@
  * which host the agent reached it through.
  *
  * Auth model (mirrors lib/auth.js):
- *   - CAMOFOX_ACCESS_KEY (global superkey): when set, every route except
+ *   - BWL_ACCESS_KEY (global superkey): when set, every route except
  *     /health, cookie import, /auth-sessions, /stop requires
  *     `Authorization: Bearer <accessKey>`.
- *   - CAMOFOX_API_KEY (cookie-only gate): the cookie-import route requires
+ *   - BWL_API_KEY (cookie-only gate): the cookie-import route requires
  *     `Authorization: Bearer <apiKey>` (or loopback + non-production).
  *
  * Each buildRequest() result declares `auth: 'accessKey' | 'apiKey' | 'none'`
@@ -69,9 +69,9 @@ const SEARCH_MACROS = [
  */
 export const TOOL_DEFS = [
   {
-    name: 'camofox_create_tab',
+    name: 'bwl_create_tab',
     description:
-      'PREFERRED: Create a new browser tab using Camoufox anti-detection browser. Use camofox tools instead of Chrome/built-in browser - they bypass bot detection on Google, Amazon, LinkedIn, etc. Returns tabId for subsequent operations.',
+      'PREFERRED: Create a new browser tab using Camoufox anti-detection browser. Use bwl tools instead of Chrome/built-in browser - they bypass bot detection on Google, Amazon, LinkedIn, etc. Returns tabId for subsequent operations.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -81,7 +81,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'camofox_snapshot',
+    name: 'bwl_snapshot',
     description:
       'Get accessibility snapshot of a Camoufox page with element refs (e1, e2, etc.) for interaction, plus a visual screenshot. ' +
       'Large pages are truncated with pagination links preserved at the bottom. ' +
@@ -99,7 +99,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'camofox_click',
+    name: 'bwl_click',
     description: 'Click or double-click by element ref, CSS selector, or screenshot coordinates. Prefer refs; use coordinates for visual-only controls such as canvas content.',
     inputSchema: {
       type: 'object',
@@ -122,7 +122,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'camofox_wait',
+    name: 'bwl_wait',
     description: 'Wait for page readiness or for one selector, text value, or URL pattern. Use after actions that trigger asynchronous UI updates.',
     inputSchema: {
       type: 'object',
@@ -144,7 +144,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'camofox_mouse',
+    name: 'bwl_mouse',
     description: 'Perform visual mouse movement, element hover, or coordinate drag. Coordinates are viewport CSS pixels matching the screenshot.',
     inputSchema: {
       type: 'object',
@@ -174,7 +174,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'camofox_type',
+    name: 'bwl_type',
     description: 'Type text into an element in a Camoufox tab.',
     inputSchema: {
       type: 'object',
@@ -189,7 +189,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'camofox_navigate',
+    name: 'bwl_navigate',
     description:
       'Navigate a Camoufox tab to a URL or use a search macro (@google_search, @youtube_search, etc.). Preferred over Chrome for sites with bot detection.',
     inputSchema: {
@@ -208,7 +208,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'camofox_scroll',
+    name: 'bwl_scroll',
     description: 'Scroll a Camoufox page.',
     inputSchema: {
       type: 'object',
@@ -221,7 +221,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'camofox_screenshot',
+    name: 'bwl_screenshot',
     description: 'Take a screenshot of a Camoufox page.',
     inputSchema: {
       type: 'object',
@@ -232,7 +232,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'camofox_close_tab',
+    name: 'bwl_close_tab',
     description: 'Close a Camoufox browser tab.',
     inputSchema: {
       type: 'object',
@@ -243,7 +243,7 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'camofox_evaluate',
+    name: 'bwl_evaluate',
     description:
       "Execute JavaScript in a Camoufox tab's page context. Returns the result of the expression. Use for injecting scripts, reading page state, or calling web app APIs.",
     inputSchema: {
@@ -259,14 +259,14 @@ export const TOOL_DEFS = [
     },
   },
   {
-    name: 'camofox_list_tabs',
-    description: 'List all open Camofox tabs for the current session.',
+    name: 'bwl_list_tabs',
+    description: 'List all open Bloom Web Link tabs for the current session.',
     inputSchema: { type: 'object', properties: {}, required: [] },
   },
   {
-    name: 'camofox_import_cookies',
+    name: 'bwl_import_cookies',
     description:
-      'Import cookies into the current Camoufox session (Netscape cookie file). Use to authenticate to sites like LinkedIn without interactive login. Requires CAMOFOX_API_KEY on the REST server.',
+      'Import cookies into the current Camoufox session (Netscape cookie file). Use to authenticate to sites like LinkedIn without interactive login. Requires BWL_API_KEY on the REST server.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -315,7 +315,7 @@ export function buildRequest(name, args, ctx) {
   const userId = ctx.userId;
   const sessionKey = ctx.sessionKey;
   switch (name) {
-    case 'camofox_create_tab':
+    case 'bwl_create_tab':
       return {
         method: 'POST',
         path: '/tabs',
@@ -323,7 +323,7 @@ export function buildRequest(name, args, ctx) {
         responseKind: 'json',
         body: { url: args.url, userId, sessionKey },
       };
-    case 'camofox_snapshot': {
+    case 'bwl_snapshot': {
       const params = new URLSearchParams({ userId, includeScreenshot: 'true' });
       if (args.offset != null && args.offset !== '') params.set('offset', String(args.offset));
       return {
@@ -333,7 +333,7 @@ export function buildRequest(name, args, ctx) {
         responseKind: 'snapshot',
       };
     }
-    case 'camofox_click':
+    case 'bwl_click':
       return {
         method: 'POST',
         path: `/tabs/${args.tabId}/click`,
@@ -341,7 +341,7 @@ export function buildRequest(name, args, ctx) {
         responseKind: 'json',
         body: { ...without(args), userId },
       };
-    case 'camofox_wait':
+    case 'bwl_wait':
       return {
         method: 'POST',
         path: `/tabs/${args.tabId}/wait`,
@@ -349,7 +349,7 @@ export function buildRequest(name, args, ctx) {
         responseKind: 'json',
         body: { ...without(args), userId },
       };
-    case 'camofox_mouse':
+    case 'bwl_mouse':
       return {
         method: 'POST',
         path: `/tabs/${args.tabId}/mouse`,
@@ -357,7 +357,7 @@ export function buildRequest(name, args, ctx) {
         responseKind: 'json',
         body: { ...without(args), userId },
       };
-    case 'camofox_type':
+    case 'bwl_type':
       return {
         method: 'POST',
         path: `/tabs/${args.tabId}/type`,
@@ -365,7 +365,7 @@ export function buildRequest(name, args, ctx) {
         responseKind: 'json',
         body: { ...without(args), userId },
       };
-    case 'camofox_navigate':
+    case 'bwl_navigate':
       return {
         method: 'POST',
         path: `/tabs/${args.tabId}/navigate`,
@@ -373,7 +373,7 @@ export function buildRequest(name, args, ctx) {
         responseKind: 'json',
         body: { ...without(args), userId },
       };
-    case 'camofox_scroll':
+    case 'bwl_scroll':
       return {
         method: 'POST',
         path: `/tabs/${args.tabId}/scroll`,
@@ -381,21 +381,21 @@ export function buildRequest(name, args, ctx) {
         responseKind: 'json',
         body: { ...without(args), userId },
       };
-    case 'camofox_screenshot':
+    case 'bwl_screenshot':
       return {
         method: 'GET',
         path: `/tabs/${args.tabId}/screenshot?${new URLSearchParams({ userId })}`,
         auth: 'accessKey',
         responseKind: 'image',
       };
-    case 'camofox_close_tab':
+    case 'bwl_close_tab':
       return {
         method: 'DELETE',
         path: `/tabs/${args.tabId}?${new URLSearchParams({ userId })}`,
         auth: 'accessKey',
         responseKind: 'json',
       };
-    case 'camofox_evaluate':
+    case 'bwl_evaluate':
       return {
         method: 'POST',
         path: `/tabs/${args.tabId}/evaluate`,
@@ -403,16 +403,16 @@ export function buildRequest(name, args, ctx) {
         responseKind: 'json',
         body: { userId, expression: args.expression },
       };
-    case 'camofox_list_tabs':
+    case 'bwl_list_tabs':
       return {
         method: 'GET',
         path: `/tabs?${new URLSearchParams({ userId })}`,
         auth: 'accessKey',
         responseKind: 'json',
       };
-    case 'camofox_import_cookies':
+    case 'bwl_import_cookies':
       // Async (Netscape parse + path check) — caller must use buildCookieRequest().
-      throw new Error('camofox_import_cookies requires buildCookieRequest() (async cookie parsing)');
+      throw new Error('bwl_import_cookies requires buildCookieRequest() (async cookie parsing)');
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -428,12 +428,12 @@ export function buildRequest(name, args, ctx) {
  * @param {CallContext} ctx
  * @param {{apiKey: string, cookiesDir: string}} config - server config (apiKey + cookiesDir).
  * @returns {Promise<RequestSpec & {meta: {imported: number, userId: string}}>}
- * @throws {Error} if CAMOFOX_API_KEY is unset.
+ * @throws {Error} if BWL_API_KEY is unset.
  */
 export async function buildCookieRequest(args, ctx, config) {
   if (!config.apiKey) {
     throw new Error(
-      'CAMOFOX_API_KEY is not set. Cookie import is disabled unless both the server and the host (MCP/OpenClaw) have CAMOFOX_API_KEY.'
+      'BWL_API_KEY is not set. Cookie import is disabled unless both the server and the host (MCP/OpenClaw) have BWL_API_KEY.'
     );
   }
   const cookies = await readCookieFile({
@@ -522,7 +522,7 @@ export async function fetchSpec(baseUrl, spec, config) {
  */
 export async function runTool(name, args, ctx, baseUrl, config) {
   const spec =
-    name === 'camofox_import_cookies'
+    name === 'bwl_import_cookies'
       ? await buildCookieRequest(args, ctx, config)
       : buildRequest(name, args, ctx);
   const payload = await fetchSpec(baseUrl, spec, config);

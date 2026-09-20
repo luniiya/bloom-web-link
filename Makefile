@@ -14,7 +14,7 @@ else
   CAMOUFOX_ARCH := x86_64
 endif
 
-IMAGE := camofox-browser:$(VERSION)-$(ARCH)
+IMAGE := bloom-web-link:$(VERSION)-$(ARCH)
 
 .PHONY: build build-arm64 build-x86 up down reset
 
@@ -36,17 +36,17 @@ up:
 	@if ! docker image inspect $(IMAGE) > /dev/null 2>&1; then \
 	  $(MAKE) build; \
 	fi
-	docker run -d --restart unless-stopped --name camofox-browser --shm-size=2g \
+	docker run -d --restart unless-stopped --name bloom-web-link --shm-size=2g \
 	  -p 127.0.0.1:9377:9377 -p 127.0.0.1:6080:6080 \
-	  -e CAMOFOX_ACCESS_KEY -e CAMOFOX_API_KEY -e CAMOFOX_ADMIN_KEY \
-	  -v camofox-data:/root/.camofox \
+	  -e BWL_ACCESS_KEY -e BWL_API_KEY -e BWL_ADMIN_KEY \
+	  -v bwl-data:/root/.bwl \
 	  $(IMAGE)
 
 down:
-	docker stop camofox-browser && docker rm camofox-browser
+	docker stop bloom-web-link && docker rm bloom-web-link
 
 reset:
-	-docker stop camofox-browser 2>/dev/null
-	-docker rm camofox-browser 2>/dev/null
+	-docker stop bloom-web-link 2>/dev/null
+	-docker rm bloom-web-link 2>/dev/null
 	-docker rmi $(IMAGE) 2>/dev/null
 	$(MAKE) build

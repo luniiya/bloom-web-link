@@ -9,7 +9,7 @@ Interactive browser access via noVNC. Log into sites visually, solve CAPTCHAs, a
 
 ## Activation
 
-Disabled by default. Enable with `ENABLE_VNC=1` env var or `"vnc": { "enabled": true }` in `camofox.config.json`.
+Disabled by default. Enable with `ENABLE_VNC=1` env var or `"vnc": { "enabled": true }` in `bwl.config.json`.
 
 ## Key Files
 
@@ -36,7 +36,7 @@ The plugin registers the `virtualDisplay` capability for its own `plugins.vnc` s
 
 ## Original Contributors
 
-- [@leoneparise](https://github.com/leoneparise) — original VNC implementation + keyboard mode ([PR #65](https://github.com/jo-inc/camofox-browser/pull/65), [PR #66](https://github.com/jo-inc/camofox-browser/pull/66))
+- [@leoneparise](https://github.com/leoneparise) — original VNC implementation + keyboard mode ([PR #65](https://github.com/jo-inc/bloom-web-link/pull/65), [PR #66](https://github.com/jo-inc/bloom-web-link/pull/66))
 - [@pradeepe](https://github.com/pradeepe) — plugin system integration, code separation refactor, security hardening
 
 For PRs touching this plugin, tag the contributors above for review.

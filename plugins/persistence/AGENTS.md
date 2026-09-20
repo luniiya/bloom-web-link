@@ -1,6 +1,6 @@
 # Persistence Plugin — Agent Guide
 
-Saves and restores per-user browser storage state (cookies + localStorage, with optional IndexedDB) across session restarts using Playwright's `storageState` API. Enabled by default — profiles persist to `~/.camofox/profiles/`.
+Saves and restores per-user browser storage state (cookies + localStorage, with optional IndexedDB) across session restarts using Playwright's `storageState` API. Enabled by default — profiles persist to `~/.bwl/profiles/`.
 
 ## How It Works
 
@@ -20,21 +20,21 @@ All hooks are async and awaited via `emitAsync()` — storage state is guarantee
 ## Storage Layout
 
 ```
-~/.camofox/profiles/
+~/.bwl/profiles/
 └── <sha256(userId)>/
     └── storage_state.json
 ```
 
 ## Configuration
 
-Enabled by default. Override profile directory with `CAMOFOX_PROFILE_DIR` env var or `"profileDir"` in plugin config. To disable: `"persistence": { "enabled": false }` in `camofox.config.json`.
+Enabled by default. Override profile directory with `BWL_PROFILE_DIR` env var or `"profileDir"` in plugin config. To disable: `"persistence": { "enabled": false }` in `bwl.config.json`.
 
 IndexedDB persistence is opt-in (`"indexedDB": true` in the persistence plugin config). It captures all serializable IndexedDB records, not only authentication data, and may make snapshots significantly larger and checkpoints slower.
 
 ## Original Contributors
 
-- [@company8](https://github.com/company8) — original persistence concept ([PR #62](https://github.com/jo-inc/camofox-browser/pull/62))
-- [@eddieoz](https://github.com/eddieoz) — cookie auto-load on startup ([PR #55](https://github.com/jo-inc/camofox-browser/pull/55))
+- [@company8](https://github.com/company8) — original persistence concept ([PR #62](https://github.com/jo-inc/bloom-web-link/pull/62))
+- [@eddieoz](https://github.com/eddieoz) — cookie auto-load on startup ([PR #55](https://github.com/jo-inc/bloom-web-link/pull/55))
 - [@pradeepe](https://github.com/pradeepe) — plugin system integration, atomic writes, inflight coalescing
 
 For PRs touching this plugin, tag the contributors above for review.

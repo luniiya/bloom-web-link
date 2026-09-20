@@ -1,6 +1,6 @@
 {
-  "id": "camofox-browser",
-  "name": "Camofox Browser",
+  "id": "bloom-web-link",
+  "name": "Bloom Web Link",
   "version": "1.6.0",
   "newPageTimeoutMs": 10000,
   "interactive": { "mode": "off" },

@@ -3,7 +3,7 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile.ci"
 
 [deploy]
-startCommand = "sh -c 'CAMOFOX_MCP_PORT=${PORT:-9377} bun run src/index.ts'"
+startCommand = "sh -c 'BWL_MCP_PORT=${PORT:-9377} bun run src/index.ts'"
 healthcheckPath = "/gateway/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"

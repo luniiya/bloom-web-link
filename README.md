@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="fox.png" alt="camofox-browser" width="200" />
-  <h1>camofox-browser</h1>
+  <img src="fox.png" alt="bloom-web-link" width="200" />
+  <h1>bloom-web-link</h1>
   <p><strong>Anti-detection browser server for AI agents, powered by Camoufox</strong></p>
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
-    <a href="https://github.com/jo-inc/camofox-browser/stargazers"><img src="https://img.shields.io/github/stars/jo-inc/camofox-browser" alt="GitHub stars" /></a>
-    <a href="https://www.npmjs.com/package/camofox-browser"><img src="https://img.shields.io/npm/v/camofox-browser" alt="npm version" /></a>
-    <a href="https://github.com/jo-inc/camofox-browser/commits"><img src="https://img.shields.io/github/last-commit/jo-inc/camofox-browser" alt="GitHub last commit" /></a>
+    <a href="https://github.com/jo-inc/bloom-web-link/stargazers"><img src="https://img.shields.io/github/stars/jo-inc/bloom-web-link" alt="GitHub stars" /></a>
+    <a href="https://www.npmjs.com/package/bloom-web-link"><img src="https://img.shields.io/npm/v/bloom-web-link" alt="npm version" /></a>
+    <a href="https://github.com/jo-inc/bloom-web-link/commits"><img src="https://img.shields.io/github/last-commit/jo-inc/bloom-web-link" alt="GitHub last commit" /></a>
   </p>
   <p>
     Standing on the mighty shoulders of <a href="https://camoufox.com">Camoufox</a> - a Firefox fork with fingerprint spoofing at the C++ level.
@@ -15,9 +15,9 @@
 
 <br/>
 
-> <a href="https://askjo.ai?ref=camofox"><img src="jo-logo.png" alt="Jo" width="80" height="80" align="left" /></a>
+> <a href="https://askjo.ai?ref=bwl"><img src="jo-logo.png" alt="Jo" width="80" height="80" align="left" /></a>
 >
-> Built by the team behind <a href="https://askjo.ai?ref=camofox"><strong>jo, a personal AI agent</strong></a> that runs half on your Mac, half on a dedicated cloud machine just for you -- with zero maintenance needed. Available on macOS, Telegram, WhatsApp, and email. <a href="https://askjo.ai?ref=camofox">Try the beta free -></a>
+> Built by the team behind <a href="https://askjo.ai?ref=bwl"><strong>jo, a personal AI agent</strong></a> that runs half on your Mac, half on a dedicated cloud machine just for you -- with zero maintenance needed. Available on macOS, Telegram, WhatsApp, and email. <a href="https://askjo.ai?ref=bwl">Try the beta free -></a>
 
 > <a href="https://x.com/pradeep24"><img src="pradeep-profile.png" alt="Pradeep Elankumaran" width="80" height="80" align="left" /></a>
 >
@@ -28,7 +28,7 @@
 <br/>
 
 ```bash
-git clone https://github.com/jo-inc/camofox-browser && cd camofox-browser
+git clone https://github.com/jo-inc/bloom-web-link && cd bloom-web-link
 npm install && npm start
 # -> http://localhost:9377
 ```
@@ -65,7 +65,7 @@ This project wraps that engine in a REST API built for agents: accessibility sna
 - **OpenAPI Docs** - auto-generated spec at [`/openapi.json`](http://localhost:9377/openapi.json) and interactive docs at [`/docs`](http://localhost:9377/docs)
 - **Structured Extract** - `POST /tabs/:tabId/extract` with a JSON Schema that maps properties to snapshot refs via `x-ref`
 - **Session Tracing** - opt-in per-session Playwright trace capture (screenshots + DOM snapshots + network) with API endpoints to list, fetch, and delete trace zips
-- **Telemetry** - automatic [anonymized crash/hang telemetry](lib/reporter.js#L28-L290) via GitHub Issues. Identifies which sites cause failures and common failure patterns. Private domains are HMAC-hashed, paths/params stripped, tokens/IPs redacted. Opt-out with `CAMOFOX_CRASH_REPORT_ENABLED=false`.
+- **Telemetry** - automatic [anonymized crash/hang telemetry](lib/reporter.js#L28-L290) via GitHub Issues. Identifies which sites cause failures and common failure patterns. Private domains are HMAC-hashed, paths/params stripped, tokens/IPs redacted. Opt-out with `BWL_CRASH_REPORT_ENABLED=false`.
 
 ## Optional Dependencies
 
@@ -80,24 +80,24 @@ The Docker image includes yt-dlp. For local dev, install it for the `/youtube/tr
 ### OpenClaw Plugin
 
 ```bash
-openclaw plugins install @askjo/camofox-browser
+openclaw plugins install @askjo/bloom-web-link
 ```
 
-**Tools:** `camofox_create_tab`  |  `camofox_snapshot`  |  `camofox_click`  |  `camofox_type`  |  `camofox_navigate`  |  `camofox_scroll`  |  `camofox_screenshot`  |  `camofox_close_tab`  |  `camofox_list_tabs`  |  `camofox_import_cookies`
+**Tools:** `bwl_create_tab`  |  `bwl_snapshot`  |  `bwl_click`  |  `bwl_type`  |  `bwl_navigate`  |  `bwl_scroll`  |  `bwl_screenshot`  |  `bwl_close_tab`  |  `bwl_list_tabs`  |  `bwl_import_cookies`
 
 ### Standalone
 
 Run from npm:
 
 ```bash
-npx @askjo/camofox-browser
+npx @askjo/bloom-web-link
 ```
 
 Or from source:
 
 ```bash
-git clone https://github.com/jo-inc/camofox-browser
-cd camofox-browser
+git clone https://github.com/jo-inc/bloom-web-link
+cd bloom-web-link
 npm install
 npm start  # downloads Camoufox on first run (~300MB)
 ```
@@ -108,7 +108,7 @@ MCP support is included in the default runtime. `npm start` launches the Bun con
 
 > **Note:** the postinstall script unsets `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` for itself before fetching the Camoufox binary. Without that override, an exported `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` (common when Playwright is configured to use system Chrome) would silently skip the binary download and crash the server at runtime.
 >
-> **External Camoufox executable:** set `CAMOUFOX_EXECUTABLE=/path/to/camoufox-bin` before `npm install` and when starting the server to skip the bundled download and launch that executable. Compatibility aliases are `CAMOUFOX_EXECUTABLE_PATH` and `CAMOFOX_EXECUTABLE_PATH`. This is useful for NixOS paths such as `/nix/store/.../camoufox-bin`; the executable must come from a Camoufox bundle that includes `properties.json`, `version.json`, and `fontconfig/`.
+> **External Camoufox executable:** set `CAMOUFOX_EXECUTABLE=/path/to/camoufox-bin` before `npm install` and when starting the server to skip the bundled download and launch that executable. Compatibility aliases are `CAMOUFOX_EXECUTABLE_PATH` and `BWL_EXECUTABLE_PATH`. This is useful for NixOS paths such as `/nix/store/.../camoufox-bin`; the executable must come from a Camoufox bundle that includes `properties.json`, `version.json`, and `fontconfig/`.
 >
 > **Air-gapped or custom binary management:** prefer `CAMOUFOX_EXECUTABLE` when you already have a Camoufox bundle. Otherwise disable the auto-fetch with `npm install --ignore-scripts` (skips lifecycle scripts for *every* dependency -- bluntest option) or, more surgically, `npm install --omit=optional` plus a manual `npx camoufox-js fetch` step against your mirror. Note that `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install` no longer skips the Camoufox download (the postinstall sanitizes the env locally); use `--ignore-scripts` or `CAMOUFOX_EXECUTABLE` for that.
 
@@ -127,11 +127,11 @@ docker compose up --build -d
 make up
 
 # Or directly
-docker build -t camofox-browser .
+docker build -t bloom-web-link .
 docker run --rm --shm-size=2g \
   -p 127.0.0.1:9377:9377 -p 127.0.0.1:6080:6080 \
-  -v camofox-data:/root/.camofox \
-  camofox-browser
+  -v bwl-data:/root/.bwl \
+  bloom-web-link
 
 # Stop and remove the container
 make down
@@ -144,7 +144,7 @@ make up ARCH=x86_64
 make up VERSION=152.0.4 RELEASE=beta.28
 ```
 
-Authentication is disabled by default and Compose binds both ports to `127.0.0.1`, so they are only reachable from the local machine. To opt in, copy `.env.example` to `.env`, uncomment `CAMOFOX_ACCESS_KEY`, and restart. Bun and Docker Compose automatically load `.env`; the same bearer key then protects MCP, REST, and dashboard API traffic. The dashboard only displays its access-key control when authentication is enabled.
+Authentication is disabled by default and Compose binds both ports to `127.0.0.1`, so they are only reachable from the local machine. To opt in, copy `.env.example` to `.env`, uncomment `BWL_ACCESS_KEY`, and restart. Bun and Docker Compose automatically load `.env`; the same bearer key then protects MCP, REST, and dashboard API traffic. The dashboard only displays its access-key control when authentication is enabled.
 
 ### Fly.io
 
@@ -162,7 +162,7 @@ railway up
 
 Set secrets via the Railway dashboard or CLI:
 ```bash
-railway variables set CAMOFOX_API_KEY="your-generated-key"
+railway variables set BWL_API_KEY="your-generated-key"
 ```
 
 ## Usage
@@ -183,15 +183,15 @@ openssl rand -hex 32
 **2. Set the environment variable before starting OpenClaw:**
 
 ```bash
-export CAMOFOX_API_KEY="your-generated-key"
+export BWL_API_KEY="your-generated-key"
 openclaw start
 ```
 
 The same key is used by both the plugin (to authenticate requests) and the server (to verify them). Both run from the same environment -- set it once.
 
-> **Why an env var?** The key is a secret. Plugin config in `openclaw.json` is stored in plaintext, so secrets don't belong there. Set `CAMOFOX_API_KEY` in your shell profile, systemd unit, Docker env, or Fly.io secrets.
+> **Why an env var?** The key is a secret. Plugin config in `openclaw.json` is stored in plaintext, so secrets don't belong there. Set `BWL_API_KEY` in your shell profile, systemd unit, Docker env, or Fly.io secrets.
 
-> **Cookie import is disabled by default.** If `CAMOFOX_API_KEY` is not set, the server rejects all cookie requests with 403.
+> **Cookie import is disabled by default.** If `BWL_API_KEY` is not set, the server rejects all cookie requests with 403.
 
 **3. Export cookies from your browser:**
 
@@ -200,31 +200,31 @@ Install a browser extension that exports Netscape-format cookie files (e.g., "co
 **4. Place the cookie file:**
 
 ```bash
-mkdir -p ~/.camofox/cookies
-cp ~/Downloads/linkedin_cookies.txt ~/.camofox/cookies/linkedin.txt
+mkdir -p ~/.bwl/cookies
+cp ~/Downloads/linkedin_cookies.txt ~/.bwl/cookies/linkedin.txt
 ```
 
-The default directory is `~/.camofox/cookies/`. Override with `CAMOFOX_COOKIES_DIR`.
+The default directory is `~/.bwl/cookies/`. Override with `BWL_COOKIES_DIR`.
 
 **5. Ask your agent to import them:**
 
 > Import my LinkedIn cookies from linkedin.txt
 
-The agent calls `camofox_import_cookies` -> reads the file -> POSTs to the server with the Bearer token -> cookies are injected into the browser session. Subsequent `camofox_create_tab` calls to linkedin.com will be authenticated.
+The agent calls `bwl_import_cookies` -> reads the file -> POSTs to the server with the Bearer token -> cookies are injected into the browser session. Subsequent `bwl_create_tab` calls to linkedin.com will be authenticated.
 
 #### How it works
 
 ```
-~/.camofox/cookies/linkedin.txt          (Netscape format, on disk)
+~/.bwl/cookies/linkedin.txt          (Netscape format, on disk)
         |
         v
-camofox_import_cookies tool              (parses file, filters by domain)
+bwl_import_cookies tool              (parses file, filters by domain)
         |
         v  POST /sessions/:userId/cookies
-        |  Authorization: Bearer <CAMOFOX_API_KEY>
+        |  Authorization: Bearer <BWL_API_KEY>
         |  Body: { cookies: [Playwright cookie objects] }
         v
-camofox server                           (validates, sanitizes, injects)
+bwl server                           (validates, sanitizes, injects)
         |
         v  context.addCookies(...)
         |
@@ -237,17 +237,17 @@ Camoufox browser session                 (authenticated browsing)
 
 ### Session Persistence
 
-By default, camofox persists each user's cookies and localStorage to `~/.camofox/profiles/`. Sessions survive browser restarts -- log in once (via cookies or VNC), and subsequent sessions restore the authenticated state automatically.
+By default, bwl persists each user's cookies and localStorage to `~/.bwl/profiles/`. Sessions survive browser restarts -- log in once (via cookies or VNC), and subsequent sessions restore the authenticated state automatically.
 
 ```
-~/.camofox/
+~/.bwl/
 |-- cookies/          # Bootstrap cookie files (Netscape format)
 \-- profiles/         # Persisted session state (auto-managed)
     \-- <hashed-userId>/
         \-- storage_state.json
 ```
 
-Override the directory with `CAMOFOX_PROFILE_DIR` or set `"profileDir"` in the persistence plugin config. To disable persistence, set `"persistence": { "enabled": false }` in `camofox.config.json`.
+Override the directory with `BWL_PROFILE_DIR` or set `"profileDir"` in the persistence plugin config. To disable persistence, set `"persistence": { "enabled": false }` in `bwl.config.json`.
 
 By default, storage state contains cookies and localStorage only. To also persist IndexedDB, set `"indexedDB": true` in the persistence plugin config. This captures all serializable IndexedDB records—not only authentication data—and may make snapshots significantly larger and checkpoints slower.
 
@@ -287,18 +287,18 @@ Why traces instead of video: Camoufox is Firefox-based, and Playwright's `record
 
 Tracing cannot be toggled on an existing session. `DELETE /sessions/:userId` first if you need to change the flag.
 
-Storage defaults to `~/.camofox/traces/<hashed-userId>/` and is swept on server startup:
+Storage defaults to `~/.bwl/traces/<hashed-userId>/` and is swept on server startup:
 
-- `CAMOFOX_TRACES_DIR` - base directory (default: `~/.camofox/traces`)
-- `CAMOFOX_TRACES_MAX_BYTES` - max size per trace, removed at next startup if exceeded (default: 50MB)
-- `CAMOFOX_TRACES_TTL_HOURS` - traces older than this are removed at next startup (default: 24)
+- `BWL_TRACES_DIR` - base directory (default: `~/.bwl/traces`)
+- `BWL_TRACES_MAX_BYTES` - max size per trace, removed at next startup if exceeded (default: 50MB)
+- `BWL_TRACES_TTL_HOURS` - traces older than this are removed at next startup (default: 24)
 
 #### Standalone server usage
 
 ```bash
 curl -X POST http://localhost:9377/sessions/agent1/cookies \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer YOUR_CAMOFOX_API_KEY' \
+  -H 'Authorization: Bearer YOUR_BWL_API_KEY' \
   -d '{"cookies":[{"name":"foo","value":"bar","domain":"example.com","path":"/","expires":-1,"httpOnly":false,"secure":false}]}'
 ```
 
@@ -306,19 +306,19 @@ curl -X POST http://localhost:9377/sessions/agent1/cookies \
 
 ```bash
 docker run -p 9377:9377 \
-  -e CAMOFOX_API_KEY="your-generated-key" \
-  -v ~/.camofox/cookies:/home/node/.camofox/cookies:ro \
-  camofox-browser
+  -e BWL_API_KEY="your-generated-key" \
+  -v ~/.bwl/cookies:/home/node/.bwl/cookies:ro \
+  bloom-web-link
 ```
 
 For Fly.io:
 ```bash
-fly secrets set CAMOFOX_API_KEY="your-generated-key"
+fly secrets set BWL_API_KEY="your-generated-key"
 ```
 
 For Railway:
 ```bash
-railway variables set CAMOFOX_API_KEY="your-generated-key"
+railway variables set BWL_API_KEY="your-generated-key"
 ```
 
 ### Proxy + GeoIP
@@ -358,7 +358,7 @@ docker run -p 9377:9377 \
   -e PROXY_PORT=46040 \
   -e PROXY_USERNAME=myuser \
   -e PROXY_PASSWORD=mypass \
-  camofox-browser
+  bloom-web-link
 ```
 
 When a proxy is configured:
@@ -366,7 +366,7 @@ When a proxy is configured:
 - Camoufox's GeoIP automatically sets `locale`, `timezone`, and `geolocation` to match the proxy's exit IP
 - Browser fingerprint (language, timezone, coordinates) is consistent with the proxy location
 
-Without a proxy, Camofox does not claim a geolocation or infer one from the host IP. To use a fixed direct-session identity, set both `CAMOFOX_LOCALE` and `CAMOFOX_TIMEZONE`; otherwise Camoufox keeps its own identity defaults.
+Without a proxy, Bloom Web Link does not claim a geolocation or infer one from the host IP. To use a fixed direct-session identity, set both `BWL_LOCALE` and `BWL_TIMEZONE`; otherwise Camoufox keeps its own identity defaults.
 
 ### Telemetry
 
@@ -382,11 +382,11 @@ Each report includes the failure type, stack trace, tab health counters (HTTP st
 
 #### How it works
 
-Telemetry is sent to a lightweight Cloudflare Worker endpoint at [`https://camofox-telemetry.askjo.workers.dev`](https://camofox-telemetry.askjo.workers.dev/health). The endpoint holds the GitHub App credentials as environment secrets -- **no secrets are shipped in this package**.
+Telemetry is sent to a lightweight Cloudflare Worker endpoint at [`https://bwl-telemetry.askjo.workers.dev`](https://bwl-telemetry.askjo.workers.dev/health). The endpoint holds the GitHub App credentials as environment secrets -- **no secrets are shipped in this package**.
 
 ```
 lib/reporter.js (client, no secrets)
-    |  anonymize -> POST https://camofox-telemetry.askjo.workers.dev/report
+    |  anonymize -> POST https://bwl-telemetry.askjo.workers.dev/report
     v
 Cloudflare Worker (holds GitHub App key)
     |  validate -> rate-limit -> dedup -> create GitHub Issue
@@ -402,20 +402,20 @@ You don't have to trust us -- verify what the live endpoint is running:
 
 ```bash
 # 1. Ask the endpoint what code it's running
-curl https://camofox-telemetry.askjo.workers.dev/source
+curl https://bwl-telemetry.askjo.workers.dev/source
 # -> { "commit": "abc1234", "sha256": "e3b0c44...", "source": "https://github.com/..." }
 
 # 2. Compare the sha256 against the source in this repo
 sha256sum workers/crash-reporter/index.ts
 
 # 3. Check the commit matches what CI deployed
-#    https://github.com/jo-inc/camofox-browser/actions/workflows/telemetry-deploy.yml
+#    https://github.com/jo-inc/bloom-web-link/actions/workflows/telemetry-deploy.yml
 git log --oneline workers/crash-reporter/index.ts | head -1
 ```
 
-If the hashes don't match, the endpoint is running different code than what's in the repo. The deploy workflow ([`.github/workflows/telemetry-deploy.yml`](.github/workflows/telemetry-deploy.yml)) injects the commit and source hash at deploy time -- every deploy is auditable in [GitHub Actions](https://github.com/jo-inc/camofox-browser/actions/workflows/telemetry-deploy.yml).
+If the hashes don't match, the endpoint is running different code than what's in the repo. The deploy workflow ([`.github/workflows/telemetry-deploy.yml`](.github/workflows/telemetry-deploy.yml)) injects the commit and source hash at deploy time -- every deploy is auditable in [GitHub Actions](https://github.com/jo-inc/bloom-web-link/actions/workflows/telemetry-deploy.yml).
 
-Or skip verification entirely: `CAMOFOX_CRASH_REPORT_ENABLED=false` disables all telemetry, or point to [your own endpoint](#self-hosted-telemetry-endpoint) with `CAMOFOX_CRASH_REPORT_URL`.
+Or skip verification entirely: `BWL_CRASH_REPORT_ENABLED=false` disables all telemetry, or point to [your own endpoint](#self-hosted-telemetry-endpoint) with `BWL_CRASH_REPORT_URL`.
 
 #### Privacy
 
@@ -432,18 +432,18 @@ Duplicate issues are detected by stack signature and get a `+1` comment instead 
 
 ```bash
 # Disable telemetry
-export CAMOFOX_CRASH_REPORT_ENABLED=false
+export BWL_CRASH_REPORT_ENABLED=false
 
 # Point to your own endpoint (see below)
-export CAMOFOX_CRASH_REPORT_URL=https://your-endpoint.example.com/report
+export BWL_CRASH_REPORT_URL=https://your-endpoint.example.com/report
 
 # Adjust rate limit (default: 10 per hour)
-export CAMOFOX_CRASH_REPORT_RATE_LIMIT=5
+export BWL_CRASH_REPORT_RATE_LIMIT=5
 ```
 
 #### Self-hosted telemetry endpoint
 
-To file telemetry reports in your own GitHub repo instead of `jo-inc/camofox-browser`:
+To file telemetry reports in your own GitHub repo instead of `jo-inc/bloom-web-link`:
 
 1. **Create a GitHub App** -- [Settings -> Developer settings -> GitHub Apps -> New](https://github.com/settings/apps/new)
    - Permissions: **Repository -> Issues -> Read & Write**
@@ -472,9 +472,9 @@ To file telemetry reports in your own GitHub repo instead of `jo-inc/camofox-bro
    echo "your-org/your-repo" | npx wrangler secret put GH_REPO
    ```
 
-4. **Point camofox-browser to your endpoint:**
+4. **Point bloom-web-link to your endpoint:**
    ```bash
-   export CAMOFOX_CRASH_REPORT_URL=https://your-worker.your-subdomain.workers.dev/report
+   export BWL_CRASH_REPORT_URL=https://your-worker.your-subdomain.workers.dev/report
    ```
 
 5. **Verify:**
@@ -596,7 +596,7 @@ Reddit macros return JSON directly (no HTML parsing needed):
 
 ## Browser Configuration
 
-Browser behavior can be tuned in `camofox.config.json`:
+Browser behavior can be tuned in `bwl.config.json`:
 
 ```json
 {
@@ -604,41 +604,41 @@ Browser behavior can be tuned in `camofox.config.json`:
 }
 ```
 
-`newPageTimeoutMs` controls how long tab creation waits for Firefox to create a page. If the context is unresponsive, Camofox replaces only that user's context and retries once. The default is 10 seconds.
+`newPageTimeoutMs` controls how long tab creation waits for Firefox to create a page. If the context is unresponsive, Bloom Web Link replaces only that user's context and retries once. The default is 10 seconds.
 
-Camoufox launches the full Firefox uBlock Origin extension by default. Camofox also enables Firefox's native reject-only cookie-banner service: known consent requests are rejected when possible, and never changed to "accept all" as a fallback.
+Camoufox launches the full Firefox uBlock Origin extension by default. Bloom Web Link also enables Firefox's native reject-only cookie-banner service: known consent requests are rejected when possible, and never changed to "accept all" as a fallback.
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CAMOFOX_MCP_PORT` | Public MCP and backward-compatible REST gateway port | `9377` |
-| `CAMOFOX_WEB_PORT` | Public browser Control Room port | `6080` |
-| `CAMOFOX_INTERNAL_PORT` | Loopback-only browser core port inside the container/process group | `9378` |
+| `BWL_MCP_PORT` | Public MCP and backward-compatible REST gateway port | `9377` |
+| `BWL_WEB_PORT` | Public browser Control Room port | `6080` |
+| `BWL_INTERNAL_PORT` | Loopback-only browser core port inside the container/process group | `9378` |
 | `PORT` | MCP gateway port fallback for platforms like Railway | `9377` |
-| `CAMOFOX_BIND_HOST` | Bind host for both public Bun servers | `0.0.0.0` |
-| `CAMOFOX_API_KEY` | Enable cookie import endpoint (disabled if unset) | - |
-| `CAMOFOX_ADMIN_KEY` | Required for `POST /stop` | - |
-| `CAMOFOX_ACCESS_KEY` | If set, all routes (except `/health`, cookie import, and `/stop`) require `Authorization: Bearer <key>`. Lets you safely expose the server beyond loopback. | - |
-| `CAMOFOX_EVALUATE_MAX_BODY_SIZE` | Max JSON request body size for `POST /tabs/:tabId/evaluate`; other JSON routes remain limited to `100kb`. | `1mb` |
-| `CAMOFOX_LOCALE` | Locale for an explicitly configured direct-session identity. Must be set with `CAMOFOX_TIMEZONE`. | - |
-| `CAMOFOX_TIMEZONE` | IANA timezone for an explicitly configured direct-session identity. Must be set with `CAMOFOX_LOCALE`. | - |
+| `BWL_BIND_HOST` | Bind host for both public Bun servers | `0.0.0.0` |
+| `BWL_API_KEY` | Enable cookie import endpoint (disabled if unset) | - |
+| `BWL_ADMIN_KEY` | Required for `POST /stop` | - |
+| `BWL_ACCESS_KEY` | If set, all routes (except `/health`, cookie import, and `/stop`) require `Authorization: Bearer <key>`. Lets you safely expose the server beyond loopback. | - |
+| `BWL_EVALUATE_MAX_BODY_SIZE` | Max JSON request body size for `POST /tabs/:tabId/evaluate`; other JSON routes remain limited to `100kb`. | `1mb` |
+| `BWL_LOCALE` | Locale for an explicitly configured direct-session identity. Must be set with `BWL_TIMEZONE`. | - |
+| `BWL_TIMEZONE` | IANA timezone for an explicitly configured direct-session identity. Must be set with `BWL_LOCALE`. | - |
 | `CAMOUFOX_EXECUTABLE` | External Camoufox executable to use instead of downloading/launching the bundled cache. Must point to a Camoufox bundle with sibling resources. | - |
 | `CAMOUFOX_EXECUTABLE_PATH` | Compatibility alias for `CAMOUFOX_EXECUTABLE` | - |
-| `CAMOFOX_EXECUTABLE_PATH` | Compatibility alias for `CAMOUFOX_EXECUTABLE` | - |
-| `CAMOFOX_DISABLE_DEFAULT_ADDONS` | Set to `1`/`true` to skip downloading and launching the default uBlock Origin (UBO) addon. Useful for deployments where the addons.mozilla.org download is unreliable or unwanted (a failed download otherwise leaves a broken addon cache that blocks startup). | `0` |
-| `CAMOFOX_COOKIE_BANNER_HANDLING` | Set to `0`/`false` to disable Firefox's native reject-only cookie-banner handling. | `1` |
-| `CAMOFOX_COOKIES_DIR` | Directory for cookie files | `~/.camofox/cookies` |
-| `CAMOFOX_UPLOADS_DIR` | Directory allowed for `POST /tabs/:tabId/upload` file attachments. Paths outside it, including symlink escapes, are rejected. | `~/.camofox/uploads` |
-| `CAMOFOX_PROFILE_DIR` | Directory for persisted session profiles | `~/.camofox/profiles` |
-| `CAMOFOX_TRACES_DIR` | Directory for session trace zips | `~/.camofox/traces` |
-| `CAMOFOX_TRACES_MAX_BYTES` | Max size per trace, removed on next startup if exceeded | `52428800` (50MB) |
-| `CAMOFOX_TRACES_TTL_HOURS` | Traces older than this are swept on startup | `24` |
+| `BWL_EXECUTABLE_PATH` | Compatibility alias for `CAMOUFOX_EXECUTABLE` | - |
+| `BWL_DISABLE_DEFAULT_ADDONS` | Set to `1`/`true` to skip downloading and launching the default uBlock Origin (UBO) addon. Useful for deployments where the addons.mozilla.org download is unreliable or unwanted (a failed download otherwise leaves a broken addon cache that blocks startup). | `0` |
+| `BWL_COOKIE_BANNER_HANDLING` | Set to `0`/`false` to disable Firefox's native reject-only cookie-banner handling. | `1` |
+| `BWL_COOKIES_DIR` | Directory for cookie files | `~/.bwl/cookies` |
+| `BWL_UPLOADS_DIR` | Directory allowed for `POST /tabs/:tabId/upload` file attachments. Paths outside it, including symlink escapes, are rejected. | `~/.bwl/uploads` |
+| `BWL_PROFILE_DIR` | Directory for persisted session profiles | `~/.bwl/profiles` |
+| `BWL_TRACES_DIR` | Directory for session trace zips | `~/.bwl/traces` |
+| `BWL_TRACES_MAX_BYTES` | Max size per trace, removed on next startup if exceeded | `52428800` (50MB) |
+| `BWL_TRACES_TTL_HOURS` | Traces older than this are swept on startup | `24` |
 | `MAX_SESSIONS` | Max concurrent browser sessions | `50` |
 | `MAX_TABS_PER_SESSION` | Max tabs per session | `10` |
 | `SESSION_TIMEOUT_MS` | Session inactivity timeout (0 = never) | `600000` (10min) |
 | `BROWSER_IDLE_TIMEOUT_MS` | Kill browser when idle (0 = never) | `300000` (5min) |
-| `CAMOFOX_INTERACTIVE` | Interactive browser mode: `desktop` opens a real local Camoufox window; `off` keeps normal headless behavior | `off` |
+| `BWL_INTERACTIVE` | Interactive browser mode: `desktop` opens a real local Camoufox window; `off` keeps normal headless behavior | `off` |
 | `HANDLER_TIMEOUT_MS` | Max time for any handler | `30000` (30s) |
 | `MAX_CONCURRENT_PER_USER` | Concurrent request cap per user | `3` |
 | `PROXY_STRATEGY` | Proxy mode: `backconnect` (rotating sticky sessions) or blank (single endpoint) | - |
@@ -653,23 +653,23 @@ Camoufox launches the full Firefox uBlock Origin extension by default. Camofox a
 | `PROXY_COUNTRY` | Target country for proxy geo-targeting | - |
 | `PROXY_STATE` | Target state/region for proxy geo-targeting | - |
 | `TAB_INACTIVITY_MS` | Close tabs idle longer than this | `300000` (5min) |
-| `CAMOFOX_CRASH_REPORT_ENABLED` | Enable anonymized crash/hang telemetry (`false` to disable) | `true` |
-| `CAMOFOX_CRASH_REPORT_URL` | Telemetry endpoint ([self-hosted endpoint](#self-hosted-telemetry-endpoint)) | `https://camofox-telemetry.askjo.workers.dev/report` |
-| `CAMOFOX_CRASH_REPORT_REPO` | GitHub repo for telemetry issues | `jo-inc/camofox-browser` |
-| `CAMOFOX_CRASH_REPORT_RATE_LIMIT` | Max telemetry reports per hour | `10` |
+| `BWL_CRASH_REPORT_ENABLED` | Enable anonymized crash/hang telemetry (`false` to disable) | `true` |
+| `BWL_CRASH_REPORT_URL` | Telemetry endpoint ([self-hosted endpoint](#self-hosted-telemetry-endpoint)) | `https://bwl-telemetry.askjo.workers.dev/report` |
+| `BWL_CRASH_REPORT_REPO` | GitHub repo for telemetry issues | `jo-inc/bloom-web-link` |
+| `BWL_CRASH_REPORT_RATE_LIMIT` | Max telemetry reports per hour | `10` |
 | `ENABLE_VNC` | Enable the legacy noVNC plugin (normally unnecessary with the Control Room) | - |
 | `VNC_PASSWORD` | Password for VNC access (recommended in production) | - |
 | `NOVNC_PORT` | noVNC web UI port | `6080` |
 
 ## Interactive desktop browser
 
-Camofox is headless by default. On a machine with a local graphical desktop, opt in to a visible Camoufox window:
+Bloom Web Link is headless by default. On a machine with a local graphical desktop, opt in to a visible Camoufox window:
 
 ```bash
-CAMOFOX_INTERACTIVE=desktop npm start
+BWL_INTERACTIVE=desktop npm start
 ```
 
-Or set the same preference in `camofox.config.json` and restart the server:
+Or set the same preference in `bwl.config.json` and restart the server:
 
 ```json
 {
@@ -677,7 +677,7 @@ Or set the same preference in `camofox.config.json` and restart the server:
 }
 ```
 
-The environment variable overrides the file setting. Set `CAMOFOX_INTERACTIVE=off` to return to normal headless behavior. This mode is intended for a person using the same machine; it does not expose a remote browser-control service.
+The environment variable overrides the file setting. Set `BWL_INTERACTIVE=off` to return to normal headless behavior. This mode is intended for a person using the same machine; it does not expose a remote browser-control service.
 
 ## Architecture
 
@@ -697,7 +697,7 @@ When a session's tab limit is reached, the oldest/least-used tab is automaticall
 
 ## Security Model
 
-This section documents the security boundaries of camofox-browser for users and automated security reviewers.
+This section documents the security boundaries of bloom-web-link for users and automated security reviewers.
 
 ### Code isolation
 
@@ -705,15 +705,15 @@ All `process.env` reads are centralized in `lib/config.js`. All `child_process` 
 
 ### No embedded secrets
 
-Zero credentials, private keys, API tokens, or signing keys ship in this package. All secrets are provided at runtime via environment variables (`CAMOFOX_API_KEY`, `CAMOFOX_ACCESS_KEY`) or are Cloudflare Worker environment secrets (telemetry endpoint GitHub App key).
+Zero credentials, private keys, API tokens, or signing keys ship in this package. All secrets are provided at runtime via environment variables (`BWL_API_KEY`, `BWL_ACCESS_KEY`) or are Cloudflare Worker environment secrets (telemetry endpoint GitHub App key).
 
 ### Cookie import is disabled by default
 
-The cookie import endpoint (`POST /sessions/:userId/cookies`) is gated behind `CAMOFOX_API_KEY`. If this env var is not set, the server rejects all cookie import requests with HTTP 403. Cookie files are read from a sandboxed directory (`~/.camofox/cookies/`) with path traversal protection -- attempts to escape the directory are blocked. Max 500 cookies per request, 5MB file size limit.
+The cookie import endpoint (`POST /sessions/:userId/cookies`) is gated behind `BWL_API_KEY`. If this env var is not set, the server rejects all cookie import requests with HTTP 403. Cookie files are read from a sandboxed directory (`~/.bwl/cookies/`) with path traversal protection -- attempts to escape the directory are blocked. Max 500 cookies per request, 5MB file size limit.
 
 ### Access control
 
-`CAMOFOX_ACCESS_KEY` provides global bearer token authentication for all routes (except `/health`). When set, every request must include `Authorization: Bearer <key>`. Recommended for any deployment beyond localhost.
+`BWL_ACCESS_KEY` provides global bearer token authentication for all routes (except `/health`). When set, every request must include `Authorization: Bearer <key>`. Recommended for any deployment beyond localhost.
 
 ### Binary download
 
@@ -721,15 +721,15 @@ The Camoufox browser engine (~300MB) is downloaded at `npm install` time by [`ca
 
 ### Telemetry
 
-Anonymized crash/hang telemetry is sent to a Cloudflare Worker endpoint. The endpoint source is [in this repo](workers/crash-reporter/index.ts) and auditable. Verification: `GET /source` on the endpoint returns the deployed commit hash and sha256 so you can compare against the repo. The reporter ([`lib/reporter.js` L28-290](lib/reporter.js#L28-L290)) applies paranoid anonymization: private domains are HMAC-hashed (not reversible), paths are stripped, tokens/IPs/emails are redacted. No page content, cookies, or user data is ever sent. Disable with `CAMOFOX_CRASH_REPORT_ENABLED=false` or point to your own endpoint with `CAMOFOX_CRASH_REPORT_URL`.
+Anonymized crash/hang telemetry is sent to a Cloudflare Worker endpoint. The endpoint source is [in this repo](workers/crash-reporter/index.ts) and auditable. Verification: `GET /source` on the endpoint returns the deployed commit hash and sha256 so you can compare against the repo. The reporter ([`lib/reporter.js` L28-290](lib/reporter.js#L28-L290)) applies paranoid anonymization: private domains are HMAC-hashed (not reversible), paths are stripped, tokens/IPs/emails are redacted. No page content, cookies, or user data is ever sent. Disable with `BWL_CRASH_REPORT_ENABLED=false` or point to your own endpoint with `BWL_CRASH_REPORT_URL`.
 
 ### Session persistence
 
-The persistence plugin saves cookies and localStorage to `~/.camofox/profiles/<hashed-userId>/` so authenticated sessions survive browser restarts. UserIds are hashed for directory names. Disable via `camofox.config.json` by removing `persistence` from the plugins array.
+The persistence plugin saves cookies and localStorage to `~/.bwl/profiles/<hashed-userId>/` so authenticated sessions survive browser restarts. UserIds are hashed for directory names. Disable via `bwl.config.json` by removing `persistence` from the plugins array.
 
 ### Network access
 
-Outbound connections are made to: (1) URLs the agent navigates to (core functionality), (2) the telemetry endpoint (anonymized, opt-out available). Inbound: the REST API on port 9377, bound to all interfaces by default or to `CAMOFOX_BIND_HOST` when configured, optionally protected by `CAMOFOX_ACCESS_KEY`.
+Outbound connections are made to: (1) URLs the agent navigates to (core functionality), (2) the telemetry endpoint (anonymized, opt-out available). Inbound: the REST API on port 9377, bound to all interfaces by default or to `BWL_BIND_HOST` when configured, optionally protected by `BWL_ACCESS_KEY`.
 
 ### Subprocess usage
 
@@ -747,7 +747,7 @@ npm run test:debug    # with server output
 ## npm
 
 ```bash
-npm install @askjo/camofox-browser
+npm install @askjo/bloom-web-link
 ```
 
 ## Credits
@@ -758,7 +758,7 @@ npm install @askjo/camofox-browser
 
 ## Crypto Scam Warning
 
-Sketchy people are doing sketchy things with crypto tokens named "Camofox" now that this project is getting attention. **Camofox is not a crypto project and will never be one.** Any token, coin, or NFT using the Camofox name has nothing to do with us.
+Sketchy people are doing sketchy things with crypto tokens named "Bloom Web Link" now that this project is getting attention. **Bloom Web Link is not a crypto project and will never be one.** Any token, coin, or NFT using the Bloom Web Link name has nothing to do with us.
 
 ## License
 

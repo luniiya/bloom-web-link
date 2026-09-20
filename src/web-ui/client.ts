@@ -11,7 +11,7 @@ const status = document.querySelector<HTMLElement>("#status")!;
 const statusDot = document.querySelector<HTMLElement>("#status-dot")!;
 const authButton = document.querySelector<HTMLButtonElement>("#auth-button")!;
 const themeSelect = document.querySelector<HTMLSelectElement>("#theme-select")!;
-let accessKey = localStorage.getItem("camofox-access-key") || "";
+let accessKey = localStorage.getItem("bwl-access-key") || "";
 let refreshing = false;
 const imageUrls = new Map<string, string>();
 const cards = new Map<string, HTMLElement>();
@@ -19,15 +19,15 @@ const screenshotQueue: Array<() => Promise<void>> = [];
 const queuedScreenshots = new Set<string>();
 let activeScreenshots = 0;
 
-const savedTheme = localStorage.getItem("camofox-theme");
+const savedTheme = localStorage.getItem("bwl-theme");
 const initialTheme = savedTheme === "light" || savedTheme === "dark" ? savedTheme : "auto";
 document.documentElement.dataset.theme = initialTheme;
 themeSelect.value = initialTheme;
 themeSelect.addEventListener("change", () => {
   const theme = themeSelect.value === "light" || themeSelect.value === "dark" ? themeSelect.value : "auto";
   document.documentElement.dataset.theme = theme;
-  if (theme === "auto") localStorage.removeItem("camofox-theme");
-  else localStorage.setItem("camofox-theme", theme);
+  if (theme === "auto") localStorage.removeItem("bwl-theme");
+  else localStorage.setItem("bwl-theme", theme);
 });
 
 function authHeaders(json = false): HeadersInit {
@@ -38,11 +38,11 @@ function authHeaders(json = false): HeadersInit {
 }
 
 authButton.addEventListener("click", () => {
-  const next = prompt("Camofox access key (leave blank when authentication is disabled)", accessKey);
+  const next = prompt("Bloom Web Link access key (leave blank when authentication is disabled)", accessKey);
   if (next === null) return;
   accessKey = next.trim();
-  if (accessKey) localStorage.setItem("camofox-access-key", accessKey);
-  else localStorage.removeItem("camofox-access-key");
+  if (accessKey) localStorage.setItem("bwl-access-key", accessKey);
+  else localStorage.removeItem("bwl-access-key");
   void refresh();
 });
 

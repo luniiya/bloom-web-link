@@ -105,19 +105,19 @@ describe('TOOL_DEFS', () => {
 // --- buildRequest: per-tool REST contract (source of truth assertions) -------
 describe('buildRequest', () => {
   test.each([
-    ['camofox_create_tab', { url: 'https://x.com' }, { method: 'POST', path: '/tabs', auth: 'accessKey', kind: 'json' }],
-    ['camofox_snapshot', { tabId: 't1' }, { method: 'GET', path: '/tabs/t1/snapshot?userId=u1&includeScreenshot=true', auth: 'accessKey', kind: 'snapshot' }],
-    ['camofox_snapshot', { tabId: 't1', offset: 40 }, { method: 'GET', path: '/tabs/t1/snapshot?userId=u1&includeScreenshot=true&offset=40', auth: 'accessKey', kind: 'snapshot' }],
-    ['camofox_click', { tabId: 't1', ref: 'e1' }, { method: 'POST', path: '/tabs/t1/click', auth: 'accessKey', kind: 'json' }],
-    ['camofox_wait', { tabId: 't1', selector: '#ready' }, { method: 'POST', path: '/tabs/t1/wait', auth: 'accessKey', kind: 'json' }],
-    ['camofox_mouse', { tabId: 't1', action: 'move', x: 20, y: 40 }, { method: 'POST', path: '/tabs/t1/mouse', auth: 'accessKey', kind: 'json' }],
-    ['camofox_type', { tabId: 't1', text: 'hi', pressEnter: true }, { method: 'POST', path: '/tabs/t1/type', auth: 'accessKey', kind: 'json' }],
-    ['camofox_navigate', { tabId: 't1', url: 'https://y.com' }, { method: 'POST', path: '/tabs/t1/navigate', auth: 'accessKey', kind: 'json' }],
-    ['camofox_scroll', { tabId: 't1', direction: 'down', amount: 200 }, { method: 'POST', path: '/tabs/t1/scroll', auth: 'accessKey', kind: 'json' }],
-    ['camofox_screenshot', { tabId: 't1' }, { method: 'GET', path: '/tabs/t1/screenshot?userId=u1', auth: 'accessKey', kind: 'image' }],
-    ['camofox_close_tab', { tabId: 't1' }, { method: 'DELETE', path: '/tabs/t1?userId=u1', auth: 'accessKey', kind: 'json' }],
-    ['camofox_evaluate', { tabId: 't1', expression: '1+1' }, { method: 'POST', path: '/tabs/t1/evaluate', auth: 'accessKey', kind: 'json' }],
-    ['camofox_list_tabs', {}, { method: 'GET', path: '/tabs?userId=u1', auth: 'accessKey', kind: 'json' }],
+    ['bwl_create_tab', { url: 'https://x.com' }, { method: 'POST', path: '/tabs', auth: 'accessKey', kind: 'json' }],
+    ['bwl_snapshot', { tabId: 't1' }, { method: 'GET', path: '/tabs/t1/snapshot?userId=u1&includeScreenshot=true', auth: 'accessKey', kind: 'snapshot' }],
+    ['bwl_snapshot', { tabId: 't1', offset: 40 }, { method: 'GET', path: '/tabs/t1/snapshot?userId=u1&includeScreenshot=true&offset=40', auth: 'accessKey', kind: 'snapshot' }],
+    ['bwl_click', { tabId: 't1', ref: 'e1' }, { method: 'POST', path: '/tabs/t1/click', auth: 'accessKey', kind: 'json' }],
+    ['bwl_wait', { tabId: 't1', selector: '#ready' }, { method: 'POST', path: '/tabs/t1/wait', auth: 'accessKey', kind: 'json' }],
+    ['bwl_mouse', { tabId: 't1', action: 'move', x: 20, y: 40 }, { method: 'POST', path: '/tabs/t1/mouse', auth: 'accessKey', kind: 'json' }],
+    ['bwl_type', { tabId: 't1', text: 'hi', pressEnter: true }, { method: 'POST', path: '/tabs/t1/type', auth: 'accessKey', kind: 'json' }],
+    ['bwl_navigate', { tabId: 't1', url: 'https://y.com' }, { method: 'POST', path: '/tabs/t1/navigate', auth: 'accessKey', kind: 'json' }],
+    ['bwl_scroll', { tabId: 't1', direction: 'down', amount: 200 }, { method: 'POST', path: '/tabs/t1/scroll', auth: 'accessKey', kind: 'json' }],
+    ['bwl_screenshot', { tabId: 't1' }, { method: 'GET', path: '/tabs/t1/screenshot?userId=u1', auth: 'accessKey', kind: 'image' }],
+    ['bwl_close_tab', { tabId: 't1' }, { method: 'DELETE', path: '/tabs/t1?userId=u1', auth: 'accessKey', kind: 'json' }],
+    ['bwl_evaluate', { tabId: 't1', expression: '1+1' }, { method: 'POST', path: '/tabs/t1/evaluate', auth: 'accessKey', kind: 'json' }],
+    ['bwl_list_tabs', {}, { method: 'GET', path: '/tabs?userId=u1', auth: 'accessKey', kind: 'json' }],
   ])('%s → %s %s (auth=%s)', (name, args, expected) => {
     const spec = buildRequest(name, args, CTX);
     expect(spec.method).toBe(expected.method);
@@ -127,30 +127,30 @@ describe('buildRequest', () => {
   });
 
   test('create_tab body carries url + userId + sessionKey', () => {
-    const spec = buildRequest('camofox_create_tab', { url: 'https://x.com' }, CTX);
+    const spec = buildRequest('bwl_create_tab', { url: 'https://x.com' }, CTX);
     expect(spec.body).toEqual({ url: 'https://x.com', userId: 'u1', sessionKey: 'default' });
   });
 
   test('interaction tools forward all non-routing args + userId in body', () => {
-    const spec = buildRequest('camofox_type', { tabId: 't1', ref: 'e2', text: 'hi', pressEnter: true }, CTX);
+    const spec = buildRequest('bwl_type', { tabId: 't1', ref: 'e2', text: 'hi', pressEnter: true }, CTX);
     expect(spec.body).toEqual({ ref: 'e2', text: 'hi', pressEnter: true, userId: 'u1' });
     expect(spec.body.tabId).toBeUndefined();
 
-    const mouse = buildRequest('camofox_mouse', { tabId: 't1', action: 'drag', start: { x: 1, y: 2 }, end: { x: 3, y: 4 } }, CTX);
+    const mouse = buildRequest('bwl_mouse', { tabId: 't1', action: 'drag', start: { x: 1, y: 2 }, end: { x: 3, y: 4 } }, CTX);
     expect(mouse.body).toEqual({ action: 'drag', start: { x: 1, y: 2 }, end: { x: 3, y: 4 }, userId: 'u1' });
   });
 
   test('evaluate body is exactly { userId, expression }', () => {
-    const spec = buildRequest('camofox_evaluate', { tabId: 't1', expression: 'document.title' }, CTX);
+    const spec = buildRequest('bwl_evaluate', { tabId: 't1', expression: 'document.title' }, CTX);
     expect(spec.body).toEqual({ userId: 'u1', expression: 'document.title' });
   });
 
   test('import_cookies is NOT synchronous (must use buildCookieRequest)', () => {
-    expect(() => buildRequest('camofox_import_cookies', {}, CTX)).toThrow(/buildCookieRequest/);
+    expect(() => buildRequest('bwl_import_cookies', {}, CTX)).toThrow(/buildCookieRequest/);
   });
 
   test('unknown tool throws', () => {
-    expect(() => buildRequest('camofox_bogus', {}, CTX)).toThrow(/Unknown tool/);
+    expect(() => buildRequest('bwl_bogus', {}, CTX)).toThrow(/Unknown tool/);
   });
 });
 
@@ -213,7 +213,7 @@ describe('fetchSpec (mock REST)', () => {
     installFetch([
       { match: (r) => r.method === 'POST' && r.path === '/tabs', respond: (r) => { seen = r; return { body: { tabId: 't1' } }; } },
     ]);
-    const spec = buildRequest('camofox_create_tab', { url: 'https://x.com' }, CTX);
+    const spec = buildRequest('bwl_create_tab', { url: 'https://x.com' }, CTX);
     await fetchSpec(BASE, spec, cfg());
     expect(seen.headers.Authorization).toBe('Bearer ACCESS-KEY');
     expect(JSON.parse(seen.body)).toEqual({ url: 'https://x.com', userId: 'u1', sessionKey: 'default' });
@@ -222,13 +222,13 @@ describe('fetchSpec (mock REST)', () => {
   test('omits Authorization when server has no accessKey', async () => {
     let seen;
     installFetch([{ match: (r) => r.method === 'GET' && r.path === '/tabs?userId=u1', respond: (r) => { seen = r; return { body: [] }; } }]);
-    await fetchSpec(BASE, buildRequest('camofox_list_tabs', {}, CTX), cfg({ accessKey: '' }));
+    await fetchSpec(BASE, buildRequest('bwl_list_tabs', {}, CTX), cfg({ accessKey: '' }));
     expect(seen.headers.Authorization).toBeUndefined();
   });
 
   test('throws on non-2xx with status + body', async () => {
     installFetch([{ match: () => true, respond: () => ({ status: 403, body: { error: 'Forbidden' } }) }]);
-    await expect(fetchSpec(BASE, buildRequest('camofox_list_tabs', {}, CTX), cfg())).rejects.toThrow(/403/);
+    await expect(fetchSpec(BASE, buildRequest('bwl_list_tabs', {}, CTX), cfg())).rejects.toThrow(/403/);
   });
 
   test('screenshot decodes image bytes to a base64 image block', async () => {
@@ -236,7 +236,7 @@ describe('fetchSpec (mock REST)', () => {
     installFetch([
       { match: (r) => r.method === 'GET' && r.path === '/tabs/t1/screenshot?userId=u1', respond: () => ({ headers: { 'content-type': 'image/png' }, buffer: pngBytes }) },
     ]);
-    const out = await fetchSpec(BASE, buildRequest('camofox_screenshot', { tabId: 't1' }, CTX), cfg());
+    const out = await fetchSpec(BASE, buildRequest('bwl_screenshot', { tabId: 't1' }, CTX), cfg());
     expect(out).toMatchObject({ type: 'image', mimeType: 'image/png' });
     expect(out.data).toBe(pngBytes.toString('base64'));
   });
@@ -245,7 +245,7 @@ describe('fetchSpec (mock REST)', () => {
     installFetch([
       { match: () => true, respond: () => ({ headers: { 'content-type': 'application/json' }, body: { error: 'tab closed' } }) },
     ]);
-    await expect(fetchSpec(BASE, buildRequest('camofox_screenshot', { tabId: 't1' }, CTX), cfg())).rejects.toThrow(/Screenshot failed/);
+    await expect(fetchSpec(BASE, buildRequest('bwl_screenshot', { tabId: 't1' }, CTX), cfg())).rejects.toThrow(/Screenshot failed/);
   });
 });
 
@@ -253,7 +253,7 @@ describe('fetchSpec (mock REST)', () => {
 describe('runTool (end-to-end)', () => {
   test('create_tab round-trips through the real REST shape', async () => {
     installFetch([{ match: (r) => r.method === 'POST' && r.path === '/tabs', respond: () => ({ body: { tabId: 't9', url: 'https://x.com' } }) }]);
-    const { spec, payload } = await runTool('camofox_create_tab', { url: 'https://x.com' }, CTX, BASE, cfg());
+    const { spec, payload } = await runTool('bwl_create_tab', { url: 'https://x.com' }, CTX, BASE, cfg());
     expect(payload).toEqual({ tabId: 't9', url: 'https://x.com' });
     const content = adaptResponse(spec, payload);
     expect(content[0].type).toBe('text');
@@ -263,7 +263,7 @@ describe('runTool (end-to-end)', () => {
     installFetch([
       { match: (r) => r.method === 'GET' && r.path.startsWith('/tabs/t1/snapshot'), respond: () => ({ body: { url: 'u', snapshot: 's', screenshot: { data: 'IMG', mimeType: 'image/png' } } }) },
     ]);
-    const { spec, payload } = await runTool('camofox_snapshot', { tabId: 't1' }, CTX, BASE, cfg());
+    const { spec, payload } = await runTool('bwl_snapshot', { tabId: 't1' }, CTX, BASE, cfg());
     const content = adaptResponse(spec, payload);
     expect(content).toHaveLength(2);
     expect(content[1]).toMatchObject({ type: 'image', data: 'IMG' });
@@ -277,7 +277,7 @@ describe('runTool (end-to-end)', () => {
 describe('cookie import contract', () => {
   let tmpDir;
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'camofox-browser-mcp-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bloom-web-link-mcp-'));
   });
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -299,7 +299,7 @@ describe('cookie import contract', () => {
       },
     ]);
     const { spec, payload } = await runTool(
-      'camofox_import_cookies',
+      'bwl_import_cookies',
       { cookiesPath: 'cookies.txt', domainSuffix: 'example.com' },
       CTX,
       BASE,
@@ -317,10 +317,10 @@ describe('cookie import contract', () => {
     expect(JSON.parse(adaptResponse(spec, payload)[0].text).imported).toBe(1);
   });
 
-  test('throws when CAMOFOX_API_KEY is unset (cookie import disabled)', async () => {
+  test('throws when BWL_API_KEY is unset (cookie import disabled)', async () => {
     await expect(
       buildCookieRequest({ cookiesPath: 'cookies.txt' }, CTX, cfg({ apiKey: '' }))
-    ).rejects.toThrow(/CAMOFOX_API_KEY/);
+    ).rejects.toThrow(/BWL_API_KEY/);
   });
 
   test('rejects cookiesPath outside the cookies directory (path traversal)', async () => {
@@ -334,7 +334,7 @@ describe('cookie import contract', () => {
 describe('host equivalence', () => {
   test('every tool name is buildable and listed', () => {
     for (const name of TOOL_NAMES) {
-      if (name === 'camofox_import_cookies') {
+      if (name === 'bwl_import_cookies') {
         expect(() => buildRequest(name, {}, CTX)).toThrow(/buildCookieRequest/);
       } else {
         expect(() => buildRequest(name, { tabId: 't1', url: 'u', expression: 'e', text: 'x', direction: 'down' }, CTX)).not.toThrow();

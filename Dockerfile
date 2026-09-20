@@ -6,7 +6,7 @@ FROM oven/bun:1.4.0 AS bun-runtime
 # linked against GLIBC_2.38, so on bookworm it loads and then dies at runtime with
 # "version `GLIBC_2.38' not found" the first time a tab is opened. amd64 is
 # unaffected because that prebuild targets an older glibc.
-FROM node:22-trixie-slim AS camofox-browser
+FROM node:22-trixie-slim AS bloom-web-link
 
 COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
 
@@ -94,7 +94,7 @@ RUN npm ci --omit=dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY server.js ./
-COPY camofox.config.json ./
+COPY bwl.config.json ./
 COPY lib/ ./lib/
 COPY src/ ./src/
 # lib/cookies.js is a compatibility re-export from ../mcp/lib/cookies.mjs, so mcp/
@@ -110,18 +110,18 @@ COPY scripts/ ./scripts/
 RUN sh scripts/install-plugin-deps.sh
 
 ENV NODE_ENV=production
-ENV CAMOFOX_MCP_PORT=9377
-ENV CAMOFOX_WEB_PORT=6080
-ENV CAMOFOX_INTERNAL_PORT=9378
+ENV BWL_MCP_PORT=9377
+ENV BWL_WEB_PORT=6080
+ENV BWL_INTERNAL_PORT=9378
 
 EXPOSE 9377 6080
 
 CMD ["bun", "run", "src/index.ts"]
 
 # Optional: rebuild plugin deps after adding third-party plugins
-# Usage: docker build --target with-plugins -t camofox-browser .
-FROM camofox-browser AS with-plugins
+# Usage: docker build --target with-plugins -t bloom-web-link .
+FROM bloom-web-link AS with-plugins
 COPY plugins/ ./plugins/
-COPY camofox.config.json ./
+COPY bwl.config.json ./
 COPY scripts/install-plugin-deps.sh /tmp/install-plugin-deps.sh
 RUN /tmp/install-plugin-deps.sh && rm /tmp/install-plugin-deps.sh
