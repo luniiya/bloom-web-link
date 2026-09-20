@@ -1162,7 +1162,7 @@ async function launchBrowserInstance() {
         locale: launchLocale({ hasProxy: !!proxyPool, directIdentity: CONFIG.directIdentity }),
         virtual_display: vdDisplay,
         exclude_addons: CONFIG.disableDefaultAddons ? ['UBO'] : undefined,
-        firefox_user_prefs: CONFIG.cookieBannerHandlingEnabled ? COOKIE_BANNER_FIREFOX_PREFS : undefined,
+        firefox_user_prefs: CONFIG.cookieBannerHandlingEnabled ? { ...COOKIE_BANNER_FIREFOX_PREFS } : undefined,
       }, {
         attempt,
         proxyServer: launchProxy?.server || null,
