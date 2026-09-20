@@ -129,8 +129,7 @@ make up
 # Or directly
 docker build -t camofox-browser .
 docker run --rm --shm-size=2g \
-  -p 9377:9377 -p 6080:6080 \
-  -e CAMOFOX_ACCESS_KEY="change-me" \
+  -p 127.0.0.1:9377:9377 -p 127.0.0.1:6080:6080 \
   -v camofox-data:/root/.camofox \
   camofox-browser
 
@@ -145,7 +144,7 @@ make up ARCH=x86_64
 make up VERSION=152.0.4 RELEASE=beta.28
 ```
 
-Set `CAMOFOX_ACCESS_KEY` before exposing either port outside a trusted machine. The same bearer key protects MCP, REST, and dashboard API traffic. The dashboard asks for it in the “Access key” dialog and stores it in browser local storage.
+Authentication is disabled by default and Compose binds both ports to `127.0.0.1`, so they are only reachable from the local machine. To opt in, copy `.env.example` to `.env`, uncomment `CAMOFOX_ACCESS_KEY`, and restart. Bun and Docker Compose automatically load `.env`; the same bearer key then protects MCP, REST, and dashboard API traffic. The dashboard only displays its access-key control when authentication is enabled.
 
 ### Fly.io
 

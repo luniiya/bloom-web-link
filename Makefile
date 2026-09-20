@@ -37,7 +37,7 @@ up:
 	  $(MAKE) build; \
 	fi
 	docker run -d --restart unless-stopped --name camofox-browser --shm-size=2g \
-	  -p 9377:9377 -p 6080:6080 \
+	  -p 127.0.0.1:9377:9377 -p 127.0.0.1:6080:6080 \
 	  -e CAMOFOX_ACCESS_KEY -e CAMOFOX_API_KEY -e CAMOFOX_ADMIN_KEY \
 	  -v camofox-data:/root/.camofox \
 	  $(IMAGE)

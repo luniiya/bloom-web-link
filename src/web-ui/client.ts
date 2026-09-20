@@ -9,6 +9,8 @@ const empty = document.querySelector<HTMLElement>("#empty")!;
 const template = document.querySelector<HTMLTemplateElement>("#tab-template")!;
 const status = document.querySelector<HTMLElement>("#status")!;
 const statusDot = document.querySelector<HTMLElement>("#status-dot")!;
+const authButton = document.querySelector<HTMLButtonElement>("#auth-button")!;
+const themeSelect = document.querySelector<HTMLSelectElement>("#theme-select")!;
 let accessKey = localStorage.getItem("camofox-access-key") || "";
 let refreshing = false;
 const imageUrls = new Map<string, string>();
@@ -17,6 +19,17 @@ const screenshotQueue: Array<() => Promise<void>> = [];
 const queuedScreenshots = new Set<string>();
 let activeScreenshots = 0;
 
+const savedTheme = localStorage.getItem("camofox-theme");
+const initialTheme = savedTheme === "light" || savedTheme === "dark" ? savedTheme : "auto";
+document.documentElement.dataset.theme = initialTheme;
+themeSelect.value = initialTheme;
+themeSelect.addEventListener("change", () => {
+  const theme = themeSelect.value === "light" || themeSelect.value === "dark" ? themeSelect.value : "auto";
+  document.documentElement.dataset.theme = theme;
+  if (theme === "auto") localStorage.removeItem("camofox-theme");
+  else localStorage.setItem("camofox-theme", theme);
+});
+
 function authHeaders(json = false): HeadersInit {
   return {
     ...(accessKey ? { Authorization: `Bearer ${accessKey}` } : {}),
@@ -24,7 +37,7 @@ function authHeaders(json = false): HeadersInit {
   };
 }
 
-document.querySelector("#auth-button")!.addEventListener("click", () => {
+authButton.addEventListener("click", () => {
   const next = prompt("Camofox access key (leave blank when authentication is disabled)", accessKey);
   if (next === null) return;
   accessKey = next.trim();
@@ -146,5 +159,16 @@ async function refresh() {
   }
 }
 
-void refresh();
-setInterval(refresh, 3_000);
+async function initialize() {
+  try {
+    const response = await fetch("/api/config");
+    const config = await response.json() as { authRequired?: boolean };
+    authButton.hidden = !config.authRequired;
+  } catch {
+    authButton.hidden = true;
+  }
+  await refresh();
+  setInterval(refresh, 3_000);
+}
+
+void initialize();

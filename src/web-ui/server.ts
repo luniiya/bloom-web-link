@@ -23,6 +23,7 @@ export async function startWebUi(config: ContainerConfig): Promise<Bun.Server> {
     port: config.webPort,
     async fetch(request) {
       const url = new URL(request.url);
+      if (url.pathname === "/api/config") return json({ authRequired: !!config.publicAccessKey });
       if (url.pathname.startsWith("/api/") && !isAuthorized(request, config)) return unauthorized();
       if (url.pathname === "/api/state") return coreFetch(config, "/dashboard/state");
       if (url.pathname === "/api/screenshot") {

@@ -15,7 +15,7 @@ COPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun
 ARG CAMOUFOX_VERSION=152.0.4
 ARG CAMOUFOX_RELEASE=beta.28
 ARG ARCH
-ARG TARGETARCH
+ARG TARGETARCH=amd64
 ARG YT_DLP_VERSION=2026.08.19
 ARG YT_DLP_SHA256=1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6
 
@@ -54,6 +54,9 @@ RUN apt-get update && apt-get install -y \
     unzip \
     # yt-dlp runtime dependency
     python3-minimal \
+    # Native addon build toolchain (removed after npm ci)
+    build-essential \
+    python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Pre-bake Camoufox browser binary into image (downloaded at build time)
@@ -86,9 +89,7 @@ COPY scripts/ ./scripts/
 # Install a toolchain for the build and purge it in the same layer so it does not
 # land in the image. Independent of the glibc issue noted at the FROM line: this
 # one fails at build time on any Debian release, that one at runtime on bookworm.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential python3 \
-    && npm ci --omit=dev \
+RUN npm ci --omit=dev \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 

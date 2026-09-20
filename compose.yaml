@@ -6,8 +6,8 @@ services:
     restart: unless-stopped
     shm_size: 2gb
     ports:
-      - "9377:9377"
-      - "6080:6080"
+      - "127.0.0.1:9377:9377"
+      - "127.0.0.1:6080:6080"
     environment:
       CAMOFOX_ACCESS_KEY: ${CAMOFOX_ACCESS_KEY:-}
       CAMOFOX_API_KEY: ${CAMOFOX_API_KEY:-}
