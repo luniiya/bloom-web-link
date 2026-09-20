@@ -27,31 +27,55 @@
       </div>
     </header>
     <main>
-      <section class="summary" aria-live="polite">
-        <div><strong id="session-count">0</strong><span>sessions</span></div>
-        <div><strong id="tab-count">0</strong><span>live tabs</span></div>
-        <div><strong id="updated">—</strong><span>last sync</span></div>
+      <section id="grid-view">
+        <section class="summary" aria-live="polite">
+          <div><strong id="session-count">0</strong><span>sessions</span></div>
+          <div><strong id="tab-count">0</strong><span>live tabs</span></div>
+          <div><strong id="updated">—</strong><span>last sync</span></div>
+        </section>
+
+        <section class="tab-section">
+          <h3 class="section-heading">Open</h3>
+          <p id="empty-open" class="empty-inline" hidden>No open tabs. Connect an MCP client to <code>/mcp</code> — new agent tabs will appear here automatically.</p>
+          <section id="grid-open" class="grid" aria-label="Open browser tabs"></section>
+        </section>
+
+        <section class="tab-section">
+          <h3 class="section-heading">Closed</h3>
+          <p id="empty-closed" class="empty-inline" hidden>No closed tabs yet.</p>
+          <section id="grid-closed" class="grid grid-closed" aria-label="Recently closed tabs"></section>
+        </section>
       </section>
-      <section id="empty" class="empty">
-        <span class="fox">◢</span>
-        <h2>No tabs yet</h2>
-        <p>Connect an MCP client to <code>/mcp</code>. New agent tabs will appear here automatically.</p>
+
+      <section id="detail-view" hidden>
+        <button id="back-button" type="button" class="back-button">&larr; All tabs</button>
+        <article class="tab-detail">
+          <div class="tab-meta">
+            <div class="favicon">●</div>
+            <div class="titles"><h2 id="detail-title"></h2><p class="url" id="detail-url"></p></div>
+            <span class="session-pill" id="detail-session"></span>
+          </div>
+          <button id="detail-screen" class="screen" type="button" title="Click to interact at this position">
+            <img id="detail-img" alt="Live browser tab screenshot" />
+            <span class="loading">Loading view…</span>
+          </button>
+          <div class="tab-footer"><span class="user" id="detail-user"></span><span class="hint">click the page to interact</span></div>
+        </article>
+        <p id="detail-missing" class="empty" hidden><span class="fox">◢</span><h2>Tab closed</h2><p>This tab is no longer open.</p></p>
       </section>
-      <section id="grid" class="grid" aria-label="Open browser tabs"></section>
     </main>
     <template id="tab-template">
-      <article class="tab-card">
+      <button class="tab-card" type="button" title="Open this tab">
         <div class="tab-meta">
           <div class="favicon">●</div>
           <div class="titles"><h2></h2><p class="url"></p></div>
-          <span class="session-pill"></span>
         </div>
-        <button class="screen" type="button" title="Click to interact at this position">
+        <div class="screen-thumb">
           <img alt="Live browser tab screenshot" />
           <span class="loading">Loading view…</span>
-        </button>
-        <div class="tab-footer"><span class="user"></span><span class="hint">click the page to interact</span></div>
-      </article>
+        </div>
+        <div class="tab-footer"><span class="session-pill"></span><span class="user"></span></div>
+      </button>
     </template>
     <script type="module" src="/client.js"></script>
   </body>
