@@ -1,765 +1,129 @@
-<div align="center">
-  <img src="fox.png" alt="bloom-web-link" width="200" />
-  <h1>bloom-web-link</h1>
-  <p><strong>Anti-detection browser server for AI agents, powered by Camoufox</strong></p>
-  <p>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
-    <a href="https://github.com/jo-inc/bloom-web-link/stargazers"><img src="https://img.shields.io/github/stars/jo-inc/bloom-web-link" alt="GitHub stars" /></a>
-    <a href="https://www.npmjs.com/package/bloom-web-link"><img src="https://img.shields.io/npm/v/bloom-web-link" alt="npm version" /></a>
-    <a href="https://github.com/jo-inc/bloom-web-link/commits"><img src="https://img.shields.io/github/last-commit/jo-inc/bloom-web-link" alt="GitHub last commit" /></a>
-  </p>
-  <p>
-    Standing on the mighty shoulders of <a href="https://camoufox.com">Camoufox</a> - a Firefox fork with fingerprint spoofing at the C++ level.
-  </p>
-</div>
+# Bloom Web Link
 
-<br/>
+A headless, anti-detection browser built for AI agents. It runs in Docker and gives agents a real Firefox ([Camoufox](https://camoufox.com)) over **MCP**. A live web dashboard shows every tab the agents have open.
 
-> <a href="https://askjo.ai?ref=bwl"><img src="jo-logo.png" alt="Jo" width="80" height="80" align="left" /></a>
->
-> Built by the team behind <a href="https://askjo.ai?ref=bwl"><strong>jo, a personal AI agent</strong></a> that runs half on your Mac, half on a dedicated cloud machine just for you -- with zero maintenance needed. Available on macOS, Telegram, WhatsApp, and email. <a href="https://askjo.ai?ref=bwl">Try the beta free -></a>
+- **MCP endpoint:** `http://localhost:9377/mcp` (Streamable HTTP)
+- **Dashboard:** `http://localhost:6080`
+- **REST API:** `http://localhost:9377` (OpenAPI spec at `/openapi.json`)
 
-> <a href="https://x.com/pradeep24"><img src="pradeep-profile.png" alt="Pradeep Elankumaran" width="80" height="80" align="left" /></a>
->
-> <a href="https://x.com/pradeep24"><strong>Pradeep Elankumaran (@pradeep24)</strong></a> — co-founder and technical CEO at Jo.
->
-> <br clear="left" />
+## Quick start
 
-<br/>
+bwl only runs in Docker.
 
 ```bash
-git clone https://github.com/jo-inc/bloom-web-link && cd bloom-web-link
-npm install && npm start
-# -> http://localhost:9377
+docker compose up -d --build
 ```
 
----
-
-## Why
-
-AI agents need to browse the real web. Playwright gets blocked. Headless Chrome gets fingerprinted. Stealth plugins become the fingerprint.
-
-Camoufox patches Firefox at the **C++ implementation level** - `navigator.hardwareConcurrency`, WebGL renderers, AudioContext, screen geometry, WebRTC - all spoofed before JavaScript ever sees them. No shims, no wrappers, no tells.
-
-This project wraps that engine in a REST API built for agents: accessibility snapshots instead of bloated HTML, stable element refs for clicking, and search macros for common sites.
-
-## Features
-
-- **C++ Anti-Detection** - bypasses Google, Cloudflare, and most bot detection
-- **Element Refs** - stable `e1`, `e2`, `e3` identifiers for reliable interaction
-- **Token-Efficient** - accessibility snapshots are ~90% smaller than raw HTML
-- **Runs on Anything** - lazy browser launch + idle shutdown keeps memory at ~40MB when idle. Designed to share a box with the rest of your stack -- Raspberry Pi, $5 VPS, shared infra.
-- **Session Isolation** - separate cookies/storage per user
-- **Cookie Import** - inject Netscape-format cookie files for authenticated browsing
-- **File Upload** - attach files from a configured upload directory without a native OS dialog
-- **Proxy + GeoIP** - route traffic through residential proxies with automatic locale/timezone
-- **Structured Logging** - JSON log lines with request IDs for production observability
-- **YouTube Transcripts** - extract captions from any YouTube video via yt-dlp, no API key needed
-- **Search Macros** - `@google_search`, `@youtube_search`, `@amazon_search`, `@reddit_subreddit`, and 10 more
-- **Snapshot Screenshots** - include a base64 PNG screenshot alongside the accessibility snapshot
-- **Large Page Handling** - automatic snapshot truncation with offset-based pagination
-- **Download Capture** - capture browser downloads and fetch them via API (optional inline base64)
-- **DOM Image Extraction** - list `<img>` src/alt and optionally return inline data URLs
-- **Deploy Anywhere** - Docker, Fly.io, Railway
-- **VNC Interactive Login** - log into sites visually via noVNC, export storage state for agent reuse
-- **OpenAPI Docs** - auto-generated spec at [`/openapi.json`](http://localhost:9377/openapi.json) and interactive docs at [`/docs`](http://localhost:9377/docs)
-- **Structured Extract** - `POST /tabs/:tabId/extract` with a JSON Schema that maps properties to snapshot refs via `x-ref`
-- **Session Tracing** - opt-in per-session Playwright trace capture (screenshots + DOM snapshots + network) with API endpoints to list, fetch, and delete trace zips
-- **Telemetry** - automatic [anonymized crash/hang telemetry](lib/reporter.js#L28-L290) via GitHub Issues. Identifies which sites cause failures and common failure patterns. Private domains are HMAC-hashed, paths/params stripped, tokens/IPs redacted. Opt-out with `BWL_CRASH_REPORT_ENABLED=false`.
-
-## Optional Dependencies
-
-| Dependency | Purpose | Install |
-|-----------|---------|---------|
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | YouTube transcript extraction (fast path) | `pip install yt-dlp` or `brew install yt-dlp` |
-
-The Docker image includes yt-dlp. For local dev, install it for the `/youtube/transcript` endpoint. Without it, the endpoint falls back to a slower browser-based method.
-
-## Quick Start
-
-### OpenClaw Plugin
+Or, without Compose:
 
 ```bash
-openclaw plugins install @askjo/bloom-web-link
+make up      # builds the image if missing, then starts the container
+make down    # stop and remove it
+make reset   # rebuild from scratch
 ```
 
-**Tools:** `bwl_create_tab`  |  `bwl_snapshot`  |  `bwl_click`  |  `bwl_type`  |  `bwl_navigate`  |  `bwl_scroll`  |  `bwl_screenshot`  |  `bwl_close_tab`  |  `bwl_list_tabs`  |  `bwl_import_cookies`
+Both bind to `127.0.0.1` only. Browser data (cookies, profiles) is kept in the `bwl-data` volume.
 
-### Standalone
+## Connect an agent
 
-Run from npm:
+Point any MCP client that speaks Streamable HTTP at `/mcp`.
+
+**Claude Code**
 
 ```bash
-npx @askjo/bloom-web-link
+claude mcp add --transport http bloom-web-link http://localhost:9377/mcp
 ```
 
-Or from source:
-
-```bash
-git clone https://github.com/jo-inc/bloom-web-link
-cd bloom-web-link
-npm install
-npm start  # downloads Camoufox on first run (~300MB)
-```
-
-Default port is `9377`. See [Environment Variables](#environment-variables) for all options.
-
-MCP support is included in the default runtime. `npm start` launches the Bun control plane, browser core, Streamable HTTP MCP endpoint at `http://localhost:9377/mcp`, and the browser Control Room at `http://localhost:6080`. The separately installable stdio adapter remains available for clients that only support local child-process MCP; see [`mcp/README.md`](mcp/README.md).
-
-> **Note:** the postinstall script unsets `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` for itself before fetching the Camoufox binary. Without that override, an exported `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` (common when Playwright is configured to use system Chrome) would silently skip the binary download and crash the server at runtime.
->
-> **External Camoufox executable:** set `CAMOUFOX_EXECUTABLE=/path/to/camoufox-bin` before `npm install` and when starting the server to skip the bundled download and launch that executable. Compatibility aliases are `CAMOUFOX_EXECUTABLE_PATH` and `BWL_EXECUTABLE_PATH`. This is useful for NixOS paths such as `/nix/store/.../camoufox-bin`; the executable must come from a Camoufox bundle that includes `properties.json`, `version.json`, and `fontconfig/`.
->
-> **Air-gapped or custom binary management:** prefer `CAMOUFOX_EXECUTABLE` when you already have a Camoufox bundle. Otherwise disable the auto-fetch with `npm install --ignore-scripts` (skips lifecycle scripts for *every* dependency -- bluntest option) or, more surgically, `npm install --omit=optional` plus a manual `npx camoufox-js fetch` step against your mirror. Note that `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install` no longer skips the Camoufox download (the postinstall sanitizes the env locally); use `--ignore-scripts` or `CAMOUFOX_EXECUTABLE` for that.
-
-### Docker
-
-The image is self-contained: Bun runs the TypeScript gateway and dashboard, while Camoufox, Xvfb, uBlock Origin, persistence, and the browser API run in the same container. Only two ports are public:
-
-- `9377`: MCP at `/mcp`, plus the backward-compatible REST API
-- `6080`: live Control Room showing every active session and tab
-
-```bash
-# Easiest: build and run the one-container stack
-docker compose up --build -d
-
-# Build and start (auto-detects Apple Silicon/ARM64 and x86_64)
-make up
-
-# Or directly
-docker build -t bloom-web-link .
-docker run --rm --shm-size=2g \
-  -p 127.0.0.1:9377:9377 -p 127.0.0.1:6080:6080 \
-  -v bwl-data:/root/.bwl \
-  bloom-web-link
-
-# Stop and remove the container
-make down
-
-# Force a clean rebuild (e.g. after upgrading VERSION/RELEASE)
-make reset
-
-# Override arch or version explicitly
-make up ARCH=x86_64
-make up VERSION=152.0.4 RELEASE=beta.28
-```
-
-Authentication is disabled by default and Compose binds both ports to `127.0.0.1`, so they are only reachable from the local machine. To opt in, copy `.env.example` to `.env`, uncomment `BWL_ACCESS_KEY`, and restart. Bun and Docker Compose automatically load `.env`; the same bearer key then protects MCP, REST, and dashboard API traffic. The dashboard only displays its access-key control when authentication is enabled.
-
-### Fly.io
-
-`Dockerfile.ci` provides the same two-port Bun runtime for builders that set `TARGETARCH` automatically.
-
-### Railway
-
-A `railway.toml` is included. It uses `Dockerfile.ci` and maps Railway's `PORT` env var to the MCP/API gateway automatically. Railway exposes one public service port; deploy the dashboard separately or use a provider that supports mapping both container ports when remote dashboard access is required.
-
-```bash
-# Install Railway CLI, then:
-railway link
-railway up
-```
-
-Set secrets via the Railway dashboard or CLI:
-```bash
-railway variables set BWL_API_KEY="your-generated-key"
-```
-
-## Usage
-
-### Cookie Import
-
-Import cookies from your browser into Camoufox to skip interactive login on sites like LinkedIn, Amazon, etc.
-
-#### Setup
-
-**1. Generate a secret key:**
-
-```bash
-# macOS / Linux
-openssl rand -hex 32
-```
-
-**2. Set the environment variable before starting OpenClaw:**
-
-```bash
-export BWL_API_KEY="your-generated-key"
-openclaw start
-```
-
-The same key is used by both the plugin (to authenticate requests) and the server (to verify them). Both run from the same environment -- set it once.
-
-> **Why an env var?** The key is a secret. Plugin config in `openclaw.json` is stored in plaintext, so secrets don't belong there. Set `BWL_API_KEY` in your shell profile, systemd unit, Docker env, or Fly.io secrets.
-
-> **Cookie import is disabled by default.** If `BWL_API_KEY` is not set, the server rejects all cookie requests with 403.
-
-**3. Export cookies from your browser:**
-
-Install a browser extension that exports Netscape-format cookie files (e.g., "cookies.txt" for Chrome/Firefox). Export the cookies for the site you want to authenticate.
-
-**4. Place the cookie file:**
-
-```bash
-mkdir -p ~/.bwl/cookies
-cp ~/Downloads/linkedin_cookies.txt ~/.bwl/cookies/linkedin.txt
-```
-
-The default directory is `~/.bwl/cookies/`. Override with `BWL_COOKIES_DIR`.
-
-**5. Ask your agent to import them:**
-
-> Import my LinkedIn cookies from linkedin.txt
-
-The agent calls `bwl_import_cookies` -> reads the file -> POSTs to the server with the Bearer token -> cookies are injected into the browser session. Subsequent `bwl_create_tab` calls to linkedin.com will be authenticated.
-
-#### How it works
-
-```
-~/.bwl/cookies/linkedin.txt          (Netscape format, on disk)
-        |
-        v
-bwl_import_cookies tool              (parses file, filters by domain)
-        |
-        v  POST /sessions/:userId/cookies
-        |  Authorization: Bearer <BWL_API_KEY>
-        |  Body: { cookies: [Playwright cookie objects] }
-        v
-bwl server                           (validates, sanitizes, injects)
-        |
-        v  context.addCookies(...)
-        |
-Camoufox browser session                 (authenticated browsing)
-```
-
-- `cookiesPath` is resolved relative to the cookies directory -- path traversal outside it is blocked
-- Max 500 cookies per request, 5MB file size limit
-- Cookie objects are sanitized to an allowlist of Playwright fields
-
-### Session Persistence
-
-By default, bwl persists each user's cookies and localStorage to `~/.bwl/profiles/`. Sessions survive browser restarts -- log in once (via cookies or VNC), and subsequent sessions restore the authenticated state automatically.
-
-```
-~/.bwl/
-|-- cookies/          # Bootstrap cookie files (Netscape format)
-\-- profiles/         # Persisted session state (auto-managed)
-    \-- <hashed-userId>/
-        \-- storage_state.json
-```
-
-Override the directory with `BWL_PROFILE_DIR` or set `"profileDir"` in the persistence plugin config. To disable persistence, set `"persistence": { "enabled": false }` in `bwl.config.json`.
-
-By default, storage state contains cookies and localStorage only. To also persist IndexedDB, set `"indexedDB": true` in the persistence plugin config. This captures all serializable IndexedDB records—not only authentication data—and may make snapshots significantly larger and checkpoints slower.
-
-### Session Tracing
-
-Capture a Playwright trace of every action in a session: page screenshots, DOM snapshots, network requests, and console output. Output is a single `.zip` file you can open in Playwright's built-in Trace Viewer.
-
-Opt-in per session by passing `trace: true` when opening the first tab:
-
-```bash
-curl -X POST http://localhost:9377/tabs \
-  -H 'Content-Type: application/json' \
-  -d '{"userId":"agent1","sessionKey":"task1","url":"https://example.com","trace":true}'
-```
-
-The trace is written when the session closes. Close the session to flush it, then list, fetch, and view:
-
-```bash
-# Close the session to flush the trace
-curl -X DELETE http://localhost:9377/sessions/agent1
-
-# List trace files
-curl http://localhost:9377/sessions/agent1/traces
-# {"traces":[{"filename":"trace-2026-04-18T04-05-00-...zip","sizeBytes":42810,"createdAt":...}]}
-
-# Download (Content-Type: application/zip)
-curl http://localhost:9377/sessions/agent1/traces/trace-2026-04-18T04-05-00-abc.zip > session.zip
-
-# View it in Playwright's Trace Viewer
-npx playwright show-trace session.zip
-
-# Delete
-curl -X DELETE http://localhost:9377/sessions/agent1/traces/trace-2026-04-18T04-05-00-abc.zip
-```
-
-Why traces instead of video: Camoufox is Firefox-based, and Playwright's `recordVideo` is Chromium-only. Traces work on Firefox and give you more than video (network + DOM + console + screenshots).
-
-Tracing cannot be toggled on an existing session. `DELETE /sessions/:userId` first if you need to change the flag.
-
-Storage defaults to `~/.bwl/traces/<hashed-userId>/` and is swept on server startup:
-
-- `BWL_TRACES_DIR` - base directory (default: `~/.bwl/traces`)
-- `BWL_TRACES_MAX_BYTES` - max size per trace, removed at next startup if exceeded (default: 50MB)
-- `BWL_TRACES_TTL_HOURS` - traces older than this are removed at next startup (default: 24)
-
-#### Standalone server usage
-
-```bash
-curl -X POST http://localhost:9377/sessions/agent1/cookies \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer YOUR_BWL_API_KEY' \
-  -d '{"cookies":[{"name":"foo","value":"bar","domain":"example.com","path":"/","expires":-1,"httpOnly":false,"secure":false}]}'
-```
-
-#### Docker / Fly.io / Railway
-
-```bash
-docker run -p 9377:9377 \
-  -e BWL_API_KEY="your-generated-key" \
-  -v ~/.bwl/cookies:/home/node/.bwl/cookies:ro \
-  bloom-web-link
-```
-
-For Fly.io:
-```bash
-fly secrets set BWL_API_KEY="your-generated-key"
-```
-
-For Railway:
-```bash
-railway variables set BWL_API_KEY="your-generated-key"
-```
-
-### Proxy + GeoIP
-
-Route all browser traffic through a proxy with automatic locale, timezone, and geolocation derived from the proxy's IP address via Camoufox's built-in GeoIP.
-
-**Simple proxy (single endpoint):**
-
-```bash
-export PROXY_HOST=166.88.179.132
-export PROXY_PORT=46040
-export PROXY_USERNAME=myuser
-export PROXY_PASSWORD=mypass
-npm start
-```
-
-**Backconnect proxy (rotating sticky sessions):**
-
-For providers like Decodo, Bright Data, or Oxylabs that offer a single gateway endpoint with session-based sticky IPs:
-
-```bash
-export PROXY_STRATEGY=backconnect
-export PROXY_BACKCONNECT_HOST=gate.provider.com
-export PROXY_BACKCONNECT_PORT=7000
-export PROXY_USERNAME=myuser
-export PROXY_PASSWORD=mypass
-npm start
-```
-
-Each browser context gets a unique sticky session, so different users get different IP addresses. Sessions rotate automatically on proxy errors or Google blocks.
-
-Or in Docker:
-
-```bash
-docker run -p 9377:9377 \
-  -e PROXY_HOST=166.88.179.132 \
-  -e PROXY_PORT=46040 \
-  -e PROXY_USERNAME=myuser \
-  -e PROXY_PASSWORD=mypass \
-  bloom-web-link
-```
-
-When a proxy is configured:
-- All traffic routes through the proxy
-- Camoufox's GeoIP automatically sets `locale`, `timezone`, and `geolocation` to match the proxy's exit IP
-- Browser fingerprint (language, timezone, coordinates) is consistent with the proxy location
-
-Without a proxy, Bloom Web Link does not claim a geolocation or infer one from the host IP. To use a fixed direct-session identity, set both `BWL_LOCALE` and `BWL_TIMEZONE`; otherwise Camoufox keeps its own identity defaults.
-
-### Telemetry
-
-Browser automation fails in ways that are hard to predict -- Cloudflare challenges, site redesigns breaking selectors, redirect loops, dialog storms, renderer crashes. The scope is wide and the failure modes are diverse. Without telemetry, the only signal is "it didn't work."
-
-Telemetry gives us structured data on *which sites fail*, *how they fail*, and *how often*, so we can prioritize fixes for the patterns that actually affect users. It files GitHub Issues automatically when:
-
-- **Uncaught exceptions** crash the process
-- **Event loop stalls** exceed 5 seconds (watchdog detection)
-- **Frustration patterns** -- 3+ consecutive failures (timeout, dead context, navigation abort) on the same tab
-
-Each report includes the failure type, stack trace, tab health counters (HTTP status histogram, console errors, request failures, redirect depth), and the target URL -- all anonymized.
-
-#### How it works
-
-Telemetry is sent to a lightweight Cloudflare Worker endpoint at [`https://bwl-telemetry.askjo.workers.dev`](https://bwl-telemetry.askjo.workers.dev/health). The endpoint holds the GitHub App credentials as environment secrets -- **no secrets are shipped in this package**.
-
-```
-lib/reporter.js (client, no secrets)
-    |  anonymize -> POST https://bwl-telemetry.askjo.workers.dev/report
-    v
-Cloudflare Worker (holds GitHub App key)
-    |  validate -> rate-limit -> dedup -> create GitHub Issue
-    v
-GitHub Issue created
-```
-
-The endpoint source code is in this repo at [`workers/crash-reporter/index.ts`](workers/crash-reporter/index.ts).
-
-#### Verification
-
-You don't have to trust us -- verify what the live endpoint is running:
-
-```bash
-# 1. Ask the endpoint what code it's running
-curl https://bwl-telemetry.askjo.workers.dev/source
-# -> { "commit": "abc1234", "sha256": "e3b0c44...", "source": "https://github.com/..." }
-
-# 2. Compare the sha256 against the source in this repo
-sha256sum workers/crash-reporter/index.ts
-
-# 3. Check the commit matches what CI deployed
-#    https://github.com/jo-inc/bloom-web-link/actions/workflows/telemetry-deploy.yml
-git log --oneline workers/crash-reporter/index.ts | head -1
-```
-
-If the hashes don't match, the endpoint is running different code than what's in the repo. The deploy workflow ([`.github/workflows/telemetry-deploy.yml`](.github/workflows/telemetry-deploy.yml)) injects the commit and source hash at deploy time -- every deploy is auditable in [GitHub Actions](https://github.com/jo-inc/bloom-web-link/actions/workflows/telemetry-deploy.yml).
-
-Or skip verification entirely: `BWL_CRASH_REPORT_ENABLED=false` disables all telemetry, or point to [your own endpoint](#self-hosted-telemetry-endpoint) with `BWL_CRASH_REPORT_URL`.
-
-#### Privacy
-
-All reported data goes through paranoid anonymization ([`lib/reporter.js` L28-290](lib/reporter.js#L28-L290)) before leaving the process:
-
-- **URLs** -- well-known public domains (Google, Amazon, Reddit, Cloudflare, etc.) are shown verbatim so we can identify which sites cause problems. Private/unknown domains are replaced with a stable HMAC hash (`site-a1b2c3d4`) -- same hash across reports for correlation, but not reversible to the original domain. Path segments become `*/*/*` (depth only). Query params become `?[3]` (count only). No keys, values, or path content is ever included.
-- **File paths** -> stripped to filename only (`<path>/server.js`)
-- **Tokens, secrets, API keys** -> `<token>`
-- **IPs, emails, env vars** -> redacted
-- **Docker/Fly machine IDs** -> `<id>`
-- **Tab health** -- pure counters (crash count, error count, status code histogram). No page content, no URLs, no user data.
-
-Duplicate issues are detected by stack signature and get a `+1` comment instead of a new issue.
-
-```bash
-# Disable telemetry
-export BWL_CRASH_REPORT_ENABLED=false
-
-# Point to your own endpoint (see below)
-export BWL_CRASH_REPORT_URL=https://your-endpoint.example.com/report
-
-# Adjust rate limit (default: 10 per hour)
-export BWL_CRASH_REPORT_RATE_LIMIT=5
-```
-
-#### Self-hosted telemetry endpoint
-
-To file telemetry reports in your own GitHub repo instead of `jo-inc/bloom-web-link`:
-
-1. **Create a GitHub App** -- [Settings -> Developer settings -> GitHub Apps -> New](https://github.com/settings/apps/new)
-   - Permissions: **Repository -> Issues -> Read & Write**
-   - Uncheck **Webhook -> Active** (not needed)
-   - Click **Generate a key** -- downloads a `.pem` file
-   - Install the app on your target repo (Install App -> select repo)
-   - Note your **App ID** (number on the app's General page) and **Installation ID** (from the URL after installing: `github.com/settings/installations/{id}`)
-
-2. **Deploy the endpoint** -- clone this repo and deploy the worker:
-   ```bash
-   cd workers/crash-reporter
-   # Edit wrangler.toml: set account_id to your Cloudflare account ID
-   npx wrangler deploy
-   ```
-   The worker is a single TypeScript file with zero npm dependencies. It also runs on Deno, Bun, or any runtime with the Web Crypto API.
-
-3. **Set worker secrets:**
-   ```bash
-   cd workers/crash-reporter
-   echo "YOUR_APP_ID" | npx wrangler secret put GH_APP_ID
-   echo "YOUR_INSTALL_ID" | npx wrangler secret put GH_INSTALL_ID
-   # Key must be PKCS#8 DER base64 (not raw PEM)
-   openssl pkcs8 -topk8 -inform PEM -outform DER -nocrypt -in your-app.pem | \
-     base64 | tr -d '\n' | npx wrangler secret put GH_PRIVATE_KEY
-   # File issues in your repo
-   echo "your-org/your-repo" | npx wrangler secret put GH_REPO
-   ```
-
-4. **Point bloom-web-link to your endpoint:**
-   ```bash
-   export BWL_CRASH_REPORT_URL=https://your-worker.your-subdomain.workers.dev/report
-   ```
-
-5. **Verify:**
-   ```bash
-   curl https://your-worker.your-subdomain.workers.dev/health
-   # -> {"status":"ok"}
-   ```
-
-### Structured Logging
-
-All log output is JSON (one object per line) for easy parsing by log aggregators:
-
-```json
-{"ts":"2026-02-11T23:45:01.234Z","level":"info","msg":"req","reqId":"a1b2c3d4","method":"POST","path":"/tabs","userId":"agent1"}
-{"ts":"2026-02-11T23:45:01.567Z","level":"info","msg":"res","reqId":"a1b2c3d4","status":200,"ms":333}
-```
-
-Health check requests (`/health`) are excluded from request logging to reduce noise.
-
-### Basic Browsing
-
-```bash
-# Create a tab
-curl -X POST http://localhost:9377/tabs \
-  -H 'Content-Type: application/json' \
-  -d '{"userId": "agent1", "sessionKey": "task1", "url": "https://example.com"}'
-
-# Get accessibility snapshot with element refs
-curl "http://localhost:9377/tabs/TAB_ID/snapshot?userId=agent1"
-# -> { "snapshot": "[button e1] Submit  [link e2] Learn more", ... }
-
-# Click by ref
-curl -X POST http://localhost:9377/tabs/TAB_ID/click \
-  -H 'Content-Type: application/json' \
-  -d '{"userId": "agent1", "ref": "e1"}'
-
-# Type into an element
-curl -X POST http://localhost:9377/tabs/TAB_ID/type \
-  -H 'Content-Type: application/json' \
-  -d '{"userId": "agent1", "ref": "e2", "text": "hello", "pressEnter": true}'
-
-# Navigate with a search macro
-curl -X POST http://localhost:9377/tabs/TAB_ID/navigate \
-  -H 'Content-Type: application/json' \
-  -d '{"userId": "agent1", "macro": "@google_search", "query": "best coffee beans"}'
-```
-
-## API
-
-### Tab Lifecycle
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/tabs` | Create tab with initial URL |
-| `GET` | `/tabs?userId=X` | List open tabs |
-| `GET` | `/tabs/:id/stats` | Tab stats (tool calls, visited URLs) |
-| `DELETE` | `/tabs/:id` | Close tab |
-| `DELETE` | `/tabs/group/:groupId` | Close all tabs in a group |
-| `DELETE` | `/sessions/:userId` | Close all tabs for a user |
-
-### Page Interaction
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/tabs/:id/snapshot` | Accessibility snapshot with element refs. Query params: `includeScreenshot=true` (add base64 PNG), `offset=N` (paginate large snapshots) |
-| `POST` | `/tabs/:id/click` | Click element by ref or CSS selector |
-| `POST` | `/tabs/:id/type` | Type text into element |
-| `POST` | `/tabs/:id/press` | Press a keyboard key |
-| `POST` | `/tabs/:id/scroll` | Scroll page (up/down/left/right) |
-| `POST` | `/tabs/:id/navigate` | Navigate to URL or search macro |
-| `POST` | `/tabs/:id/wait` | Wait for selector or timeout |
-| `GET` | `/tabs/:id/links` | Extract all links on page |
-| `GET` | `/tabs/:id/images` | List `<img>` elements. Query params: `includeData=true` (return inline data URLs), `maxBytes=N`, `limit=N` |
-| `GET` | `/tabs/:id/downloads` | List captured downloads. Query params: `includeData=true` (base64 file data), `consume=true` (clear after read), `maxBytes=N` |
-| `GET` | `/tabs/:id/screenshot` | Take screenshot |
-| `POST` | `/tabs/:id/back` | Go back |
-| `POST` | `/tabs/:id/forward` | Go forward |
-| `POST` | `/tabs/:id/refresh` | Refresh page |
-
-### YouTube Transcript
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/youtube/transcript` | Extract captions from a YouTube video |
-
-```bash
-curl -X POST http://localhost:9377/youtube/transcript \
-  -H 'Content-Type: application/json' \
-  -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "languages": ["en"]}'
-# -> { "status": "ok", "transcript": "[00:18] [music] We're no strangers to love [music]\n...", "video_title": "...", "total_words": 548 }
-```
-
-Uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) when available (fast, no browser needed). Falls back to a browser-based intercept method if yt-dlp is not installed -- this is slower and less reliable due to YouTube ad pre-rolls.
-
-### Server
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check |
-| `POST` | `/start` | Start browser engine |
-| `POST` | `/stop` | Stop browser engine |
-
-### Sessions
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/tabs/:tabId/downloads` | List captured browser downloads and saved current-resource PDFs |
-| `POST` | `/tabs/:tabId/fetch-current-resource` | Save the current inline PDF with its browser-session authentication as a download artifact |
-| `GET` | `/sessions/:userId/storage_state` | Export persisted browser storage ([VNC plugin](plugins/vnc/)) |
-| `DELETE` | `/sessions/:userId/storage_state` | Reset the live session and delete its persisted browser storage ([persistence plugin](plugins/persistence/)) |
-
-## Search Macros
-
-`@google_search`  |  `@youtube_search`  |  `@amazon_search`  |  `@reddit_search`  |  `@reddit_subreddit`  |  `@wikipedia_search`  |  `@twitter_search`  |  `@yelp_search`  |  `@spotify_search`  |  `@netflix_search`  |  `@linkedin_search`  |  `@instagram_search`  |  `@tiktok_search`  |  `@twitch_search`
-
-Reddit macros return JSON directly (no HTML parsing needed):
-- `@reddit_search` - search all of Reddit, returns JSON with 25 results
-- `@reddit_subreddit` - browse a subreddit (e.g., query `"programming"` -> `/r/programming.json`)
-
-## Browser Configuration
-
-Browser behavior can be tuned in `bwl.config.json`:
+**Other clients** (`.mcp.json`, Cursor, etc.)
 
 ```json
 {
-  "newPageTimeoutMs": 10000
+  "mcpServers": {
+    "bloom-web-link": {
+      "type": "http",
+      "url": "http://localhost:9377/mcp"
+    }
+  }
 }
 ```
 
-`newPageTimeoutMs` controls how long tab creation waits for Firefox to create a page. If the context is unresponsive, Bloom Web Link replaces only that user's context and retries once. The default is 10 seconds.
+Each MCP connection gets its own isolated browser context (separate cookies and storage). To resume the same context later, send a stable `X-BWL-User-Id` header when the connection starts. A disconnect does not close the context.
 
-Camoufox launches the full Firefox uBlock Origin extension by default. Bloom Web Link also enables Firefox's native reject-only cookie-banner service: known consent requests are rejected when possible, and never changed to "accept all" as a fallback.
+If `BWL_ACCESS_KEY` is set, send `Authorization: Bearer <key>`.
 
-## Environment Variables
+For hosts that only support stdio, a thin adapter lives in [`mcp/`](mcp/README.md).
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `BWL_MCP_PORT` | Public MCP and backward-compatible REST gateway port | `9377` |
-| `BWL_WEB_PORT` | Public browser Control Room port | `6080` |
-| `BWL_INTERNAL_PORT` | Loopback-only browser core port inside the container/process group | `9378` |
-| `PORT` | MCP gateway port fallback for platforms like Railway | `9377` |
-| `BWL_BIND_HOST` | Bind host for both public Bun servers | `0.0.0.0` |
-| `BWL_API_KEY` | Enable cookie import endpoint (disabled if unset) | - |
-| `BWL_ADMIN_KEY` | Required for `POST /stop` | - |
-| `BWL_ACCESS_KEY` | If set, all routes (except `/health`, cookie import, and `/stop`) require `Authorization: Bearer <key>`. Lets you safely expose the server beyond loopback. | - |
-| `BWL_EVALUATE_MAX_BODY_SIZE` | Max JSON request body size for `POST /tabs/:tabId/evaluate`; other JSON routes remain limited to `100kb`. | `1mb` |
-| `BWL_LOCALE` | Locale for an explicitly configured direct-session identity. Must be set with `BWL_TIMEZONE`. | - |
-| `BWL_TIMEZONE` | IANA timezone for an explicitly configured direct-session identity. Must be set with `BWL_LOCALE`. | - |
-| `CAMOUFOX_EXECUTABLE` | External Camoufox executable to use instead of downloading/launching the bundled cache. Must point to a Camoufox bundle with sibling resources. | - |
-| `CAMOUFOX_EXECUTABLE_PATH` | Compatibility alias for `CAMOUFOX_EXECUTABLE` | - |
-| `BWL_EXECUTABLE_PATH` | Compatibility alias for `CAMOUFOX_EXECUTABLE` | - |
-| `BWL_DISABLE_DEFAULT_ADDONS` | Set to `1`/`true` to skip downloading and launching the default uBlock Origin (UBO) addon. Useful for deployments where the addons.mozilla.org download is unreliable or unwanted (a failed download otherwise leaves a broken addon cache that blocks startup). | `0` |
-| `BWL_COOKIE_BANNER_HANDLING` | Set to `0`/`false` to disable Firefox's native reject-only cookie-banner handling. | `1` |
-| `BWL_COOKIES_DIR` | Directory for cookie files | `~/.bwl/cookies` |
-| `BWL_UPLOADS_DIR` | Directory allowed for `POST /tabs/:tabId/upload` file attachments. Paths outside it, including symlink escapes, are rejected. | `~/.bwl/uploads` |
-| `BWL_PROFILE_DIR` | Directory for persisted session profiles | `~/.bwl/profiles` |
-| `BWL_TRACES_DIR` | Directory for session trace zips | `~/.bwl/traces` |
-| `BWL_TRACES_MAX_BYTES` | Max size per trace, removed on next startup if exceeded | `52428800` (50MB) |
-| `BWL_TRACES_TTL_HOURS` | Traces older than this are swept on startup | `24` |
-| `MAX_SESSIONS` | Max concurrent browser sessions | `50` |
-| `MAX_TABS_PER_SESSION` | Max tabs per session | `10` |
-| `SESSION_TIMEOUT_MS` | Session inactivity timeout (0 = never) | `600000` (10min) |
-| `BROWSER_IDLE_TIMEOUT_MS` | Kill browser when idle (0 = never) | `300000` (5min) |
-| `BWL_INTERACTIVE` | Interactive browser mode: `desktop` opens a real local Camoufox window; `off` keeps normal headless behavior | `off` |
-| `HANDLER_TIMEOUT_MS` | Max time for any handler | `30000` (30s) |
-| `MAX_CONCURRENT_PER_USER` | Concurrent request cap per user | `3` |
-| `PROXY_STRATEGY` | Proxy mode: `backconnect` (rotating sticky sessions) or blank (single endpoint) | - |
-| `PROXY_PROTOCOL` | Proxy protocol: `http`, `https`, `socks4`, or `socks5`. | `http` |
-| `PROXY_PROVIDER` | Provider name for session format (e.g. `decodo`) | `decodo` |
-| `PROXY_HOST` | Proxy hostname or IP (simple mode) | - |
-| `PROXY_PORT` | Proxy port (simple mode) | - |
-| `PROXY_USERNAME` | Proxy auth username | - |
-| `PROXY_PASSWORD` | Proxy auth password | - |
-| `PROXY_BACKCONNECT_HOST` | Backconnect gateway hostname | - |
-| `PROXY_BACKCONNECT_PORT` | Backconnect gateway port | `7000` |
-| `PROXY_COUNTRY` | Target country for proxy geo-targeting | - |
-| `PROXY_STATE` | Target state/region for proxy geo-targeting | - |
-| `TAB_INACTIVITY_MS` | Close tabs idle longer than this | `300000` (5min) |
-| `BWL_CRASH_REPORT_ENABLED` | Enable anonymized crash/hang telemetry (`false` to disable) | `true` |
-| `BWL_CRASH_REPORT_URL` | Telemetry endpoint ([self-hosted endpoint](#self-hosted-telemetry-endpoint)) | `https://bwl-telemetry.askjo.workers.dev/report` |
-| `BWL_CRASH_REPORT_REPO` | GitHub repo for telemetry issues | `jo-inc/bloom-web-link` |
-| `BWL_CRASH_REPORT_RATE_LIMIT` | Max telemetry reports per hour | `10` |
-| `ENABLE_VNC` | Enable the legacy noVNC plugin (normally unnecessary with the Control Room) | - |
-| `VNC_PASSWORD` | Password for VNC access (recommended in production) | - |
-| `NOVNC_PORT` | noVNC web UI port | `6080` |
+## Tools
 
-## Interactive desktop browser
+| Tool | What it does |
+|------|--------------|
+| `bwl_create_tab` | Open a new tab at a URL and return its `tabId` |
+| `bwl_snapshot` | Accessibility snapshot with element refs (`e1`, `e2`, …) |
+| `bwl_read_text` | Cheap text-only read of the page |
+| `bwl_click` | Click by ref, CSS selector, or coordinates |
+| `bwl_type` | Type into an element, optionally pressing Enter |
+| `bwl_select` | Pick an option in a native `<select>` |
+| `bwl_mouse` | Move, hover, or drag the mouse |
+| `bwl_scroll` | Scroll the page |
+| `bwl_wait` | Wait for page readiness, a selector, text, or a URL |
+| `bwl_navigate` | Go to a URL or run a search macro (`@google_search`, …) |
+| `bwl_screenshot` | Capture a screenshot |
+| `bwl_element_state` | Computed style and ARIA state for selectors |
+| `bwl_evaluate` | Run JavaScript in the page |
+| `bwl_batch` | Run several actions in one call |
+| `bwl_list_tabs` | List open tabs |
+| `bwl_close_tab` | Close a tab |
+| `bwl_import_cookies` | Import a Netscape cookie file (requires `BWL_API_KEY`) |
 
-Bloom Web Link is headless by default. On a machine with a local graphical desktop, opt in to a visible Camoufox window:
+The typical loop is **snapshot → act by ref → snapshot again**. Refs are more reliable than CSS selectors.
 
-```bash
-BWL_INTERACTIVE=desktop npm start
-```
+## Dashboard
 
-Or set the same preference in `bwl.config.json` and restart the server:
+`http://localhost:6080` shows every open tab across all agent sessions, with live thumbnails. Tabs that close move to a "Closed" section. Open a tab to see a larger live view.
 
-```json
-{
-  "interactive": { "mode": "desktop" }
-}
-```
+## Configuration
 
-The environment variable overrides the file setting. Set `BWL_INTERACTIVE=off` to return to normal headless behavior. This mode is intended for a person using the same machine; it does not expose a remote browser-control service.
+Set these in the environment (or a `.env` file next to `compose.yaml`):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `BWL_ACCESS_KEY` | _unset_ | Bearer token required for MCP, REST, and the dashboard |
+| `BWL_API_KEY` | _unset_ | Secret required for cookie import |
+| `BWL_ADMIN_KEY` | _unset_ | Secret required for `POST /stop` |
+| `BWL_MCP_PORT` | `9377` | MCP + REST port |
+| `BWL_WEB_PORT` | `6080` | Dashboard port |
+| `BWL_LOCALE` / `BWL_TIMEZONE` | _auto_ | Browser locale and timezone |
+| `BWL_CRASH_REPORT_ENABLED` | `false` | Anonymized crash reporting |
+
+Plugin toggles (YouTube transcripts, persistence) live in [`bwl.config.json`](bwl.config.json).
 
 ## Architecture
 
+One container runs three pieces:
+
 ```
-Browser Instance (Camoufox)
-\-- User Session (BrowserContext) - isolated cookies/storage
-    |-- Tab Group (sessionKey: "conv1")
-    |   |-- Tab (google.com)
-    |   \-- Tab (github.com)
-    \-- Tab Group (sessionKey: "conv2")
-        \-- Tab (amazon.com)
+            :9377                          :6080
+  agents ──► gateway (Bun) ── /mcp       dashboard (Bun)
+                 │                            │
+                 └──────► browser core ◄──────┘
+                          (server.js, Camoufox, internal :9378)
 ```
 
-Sessions auto-expire after 30 minutes of inactivity. The browser itself shuts down after 5 minutes with no active sessions, and relaunches on the next request.
+- **Gateway** (`src/gateway.ts`) serves MCP at `/mcp` and proxies REST calls to the core, enforcing auth.
+- **Core** (`server.js`, `lib/`) drives Camoufox through Playwright and manages sessions, tabs, and snapshots.
+- **Dashboard** (`src/web-ui/`) polls the core and renders tabs.
 
-When a session's tab limit is reached, the oldest/least-used tab is automatically recycled instead of returning an error -- so long-running agent sessions don't hit dead ends.
-
-## Security Model
-
-This section documents the security boundaries of bloom-web-link for users and automated security reviewers.
-
-### Code isolation
-
-All `process.env` reads are centralized in `lib/config.js`. All `child_process` usage is in `lib/launcher.js` (server subprocess) and `plugins/youtube/youtube.js` (yt-dlp). The main `server.js` has route handlers but zero `process.env` reads and zero `child_process` imports. No single file combines environment/credential access with network sends.
-
-### No embedded secrets
-
-Zero credentials, private keys, API tokens, or signing keys ship in this package. All secrets are provided at runtime via environment variables (`BWL_API_KEY`, `BWL_ACCESS_KEY`) or are Cloudflare Worker environment secrets (telemetry endpoint GitHub App key).
-
-### Cookie import is disabled by default
-
-The cookie import endpoint (`POST /sessions/:userId/cookies`) is gated behind `BWL_API_KEY`. If this env var is not set, the server rejects all cookie import requests with HTTP 403. Cookie files are read from a sandboxed directory (`~/.bwl/cookies/`) with path traversal protection -- attempts to escape the directory are blocked. Max 500 cookies per request, 5MB file size limit.
-
-### Access control
-
-`BWL_ACCESS_KEY` provides global bearer token authentication for all routes (except `/health`). When set, every request must include `Authorization: Bearer <key>`. Recommended for any deployment beyond localhost.
-
-### Binary download
-
-The Camoufox browser engine (~300MB) is downloaded at `npm install` time by [`camoufox-js`](https://www.npmjs.com/package/camoufox-js), an npm package maintained by the [Camoufox project](https://camoufox.com). It downloads from [official GitHub releases](https://github.com/nicedayzhu/camoufox/releases) with integrity verification handled by `camoufox-js`. No custom download URLs, no URL shorteners, no raw IP addresses.
-
-### Telemetry
-
-Anonymized crash/hang telemetry is sent to a Cloudflare Worker endpoint. The endpoint source is [in this repo](workers/crash-reporter/index.ts) and auditable. Verification: `GET /source` on the endpoint returns the deployed commit hash and sha256 so you can compare against the repo. The reporter ([`lib/reporter.js` L28-290](lib/reporter.js#L28-L290)) applies paranoid anonymization: private domains are HMAC-hashed (not reversible), paths are stripped, tokens/IPs/emails are redacted. No page content, cookies, or user data is ever sent. Disable with `BWL_CRASH_REPORT_ENABLED=false` or point to your own endpoint with `BWL_CRASH_REPORT_URL`.
-
-### Session persistence
-
-The persistence plugin saves cookies and localStorage to `~/.bwl/profiles/<hashed-userId>/` so authenticated sessions survive browser restarts. UserIds are hashed for directory names. Disable via `bwl.config.json` by removing `persistence` from the plugins array.
-
-### Network access
-
-Outbound connections are made to: (1) URLs the agent navigates to (core functionality), (2) the telemetry endpoint (anonymized, opt-out available). Inbound: the REST API on port 9377, bound to all interfaces by default or to `BWL_BIND_HOST` when configured, optionally protected by `BWL_ACCESS_KEY`.
-
-### Subprocess usage
-
-Two subprocesses may be spawned: (1) the Camoufox browser engine (core functionality, `lib/launcher.js`), (2) yt-dlp for YouTube transcript extraction (optional, `plugins/youtube/youtube.js`). Both are isolated in dedicated files separate from route handlers.
-
-## Testing
+## Development
 
 ```bash
-npm test              # all tests
-npm run test:e2e      # e2e tests only
-npm run test:live     # live site tests (Google, macros)
-npm run test:debug    # with server output
+npm run test:unit        # unit tests
+npm run test:e2e         # end-to-end tests against a real browser
+npm run test:container   # typecheck + container smoke test
+npm run test:mcp         # MCP adapter tests
 ```
 
-## npm
-
-```bash
-npm install @askjo/bloom-web-link
-```
+[automationexercise.com/test_cases](https://www.automationexercise.com/test_cases) is a good real-world site for checking tools end to end.
 
 ## Credits
 
-- [Camoufox](https://camoufox.com) - Firefox-based browser with C++ anti-detection
-- [Donate to Camoufox's original creator daijro](https://camoufox.com/about/)
-- [OpenClaw](https://openclaw.ai) - Open-source AI agent framework
-
-## Crypto Scam Warning
-
-Sketchy people are doing sketchy things with crypto tokens named "Bloom Web Link" now that this project is getting attention. **Bloom Web Link is not a crypto project and will never be one.** Any token, coin, or NFT using the Bloom Web Link name has nothing to do with us.
-
-## License
-
-MIT
+bwl started as a fork of Jo Inc's Camoufox browser server and is built on [Camoufox](https://camoufox.com). MIT licensed; see [LICENSE](LICENSE).

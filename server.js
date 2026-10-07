@@ -44,6 +44,7 @@ import { INTERACTIVE_ROLES } from './lib/interactive-roles.js';
 import { selectOption } from './lib/select-option.js';
 import { clickLocator } from './lib/pointer.js';
 import { normalizeBrowserKey } from './lib/browser-key.js';
+import { createActivityLog, parseTabRequest, summarizeCall, SOURCE_HEADER } from './lib/activity-log.js';
 import { createPageWithSessionRecovery } from './lib/new-page-recovery.js';
 import { resolveUploadPaths } from './lib/upload-paths.js';
 import { acquirePageLease, hasActivePageLeases, isPageLeased, releasePageLease, setLeasedPage } from './lib/page-lease.js';
@@ -142,6 +143,24 @@ app.use((req, res, next) => {
   return globalJsonParser(req, res, next);
 });
 
+// Per-tab call log shown in the dashboard's tab view.
+const activityLog = createActivityLog();
+
+function recordTabActivity(req, res, ms) {
+  const parsed = parseTabRequest(req.method, req.path, res.locals.createdTabId);
+  if (!parsed) return;
+  const source = req.get(SOURCE_HEADER) === 'dashboard' ? 'dashboard' : 'agent';
+  // The dashboard polls screenshots every few seconds; that's noise, not activity.
+  if (source === 'dashboard' && parsed.action === 'screenshot') return;
+  activityLog.record(parsed.tabId, {
+    action: parsed.action,
+    detail: summarizeCall(parsed.action, req.body || {}, req.query || {}),
+    status: res.statusCode,
+    ms,
+    source,
+  });
+}
+
 // Request logging + metrics middleware
 app.use((req, res, next) => {
   const reqId = crypto.randomUUID().slice(0, 8);
@@ -157,9 +176,18 @@ app.use((req, res, next) => {
   reporter.trackRoute(`${req.method} ${req.route?.path || '[unmatched]'}`);
   const done = requestDuration.startTimer({ action });
 
+  const origJson = res.json.bind(res);
+  res.json = function (body) {
+    if (req.method === 'POST' && req.path === '/tabs' && typeof body?.tabId === 'string') {
+      res.locals.createdTabId = body.tabId;
+    }
+    return origJson(body);
+  };
+
   const origEnd = res.end.bind(res);
   res.end = function (...args) {
     const ms = Date.now() - req.startTime;
+    try { recordTabActivity(req, res, ms); } catch (err) { log('warn', 'activity log failed', { error: err.message }); }
     const isErrorStatus = res.statusCode >= 400;
     requestsTotal.labels(action, isErrorStatus ? 'error' : 'success').inc();
     done();
@@ -2953,6 +2981,9 @@ app.post('/pressure/cleanup', async (req, res) => {
  *               $ref: '#/components/schemas/Error'
  */
 app.post('/tabs', async (req, res) => {
+  // The tab is registered before navigation, so a failed or timed-out create
+  // must tear it down — the caller never receives its tabId.
+  let pendingTab = null;
   try {
     const { userId, sessionKey, listItemId, url, trace } = req.body;
     // Accept both sessionKey (preferred) and listItemId (legacy) for backward compatibility
@@ -3008,6 +3039,7 @@ app.post('/tabs', async (req, res) => {
       let tabState = createTabState(page);
       attachDownloadListener(tabState, tabId, log, pluginEvents, userId);
       group.set(tabId, tabState);
+      pendingTab = { session, tabId };
       releasePageLease(session, lease);
       attachPopupHandler(page, userId, resolvedSessionKey);
       refreshActiveTabsGauge();
@@ -3038,6 +3070,7 @@ app.post('/tabs', async (req, res) => {
             tabState.lastRequestedUrl = url;
             attachDownloadListener(tabState, tabId, log, pluginEvents, userId);
             retryGroup.set(tabId, tabState);
+            pendingTab = { session, tabId };
             releasePageLease(session, retryLease);
             attachPopupHandler(retryPage, userId, resolvedSessionKey);
             refreshActiveTabsGauge();
@@ -3054,6 +3087,7 @@ app.post('/tabs', async (req, res) => {
         tabState.visitedUrls.add(url);
       }
       
+      pendingTab = null;
       pluginEvents.emit('tab:created', { userId, tabId, page, url: page.url() });
       log('info', 'tab created', { reqId: req.reqId, tabId, userId, sessionKey: resolvedSessionKey, url: page.url() });
       return {
@@ -3067,6 +3101,11 @@ app.post('/tabs', async (req, res) => {
     res.json(result);
   } catch (err) {
     log('error', 'tab create failed', { reqId: req.reqId, error: err.message });
+    if (pendingTab) {
+      const { session, tabId } = pendingTab;
+      pendingTab = null;
+      await destroyTimedOutTab(session, tabId, 'create_failed', req.body?.userId);
+    }
     // SSL certificate errors on initial navigation — non-retriable
     const isSslError = err.message && (
       err.message.includes('SEC_ERROR') ||
@@ -7002,6 +7041,34 @@ app.get('/dashboard/state', async (_req, res) => {
   }
   const running = browser !== null && (browser.isConnected?.() ?? false);
   res.json({ running, generatedAt: new Date().toISOString(), sessions: dashboardSessions });
+});
+
+/**
+ * @openapi
+ * /dashboard/tabs/{tabId}/activity:
+ *   get:
+ *     tags: [Browser]
+ *     summary: Get a tab's call log
+ *     description: Recent calls made against a tab (agent and dashboard), oldest first. Kept in memory, also for recently closed tabs.
+ *     parameters:
+ *       - name: tabId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: since
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *         description: Only return entries with a sequence number greater than this.
+ *     responses:
+ *       200:
+ *         description: Log entries.
+ */
+app.get('/dashboard/tabs/:tabId/activity', (req, res) => {
+  const since = Number.parseInt(req.query.since, 10);
+  res.json({ entries: activityLog.list(req.params.tabId, Number.isFinite(since) ? since : 0) });
 });
 
 // GET /tabs - List all tabs (OpenClaw expects this)

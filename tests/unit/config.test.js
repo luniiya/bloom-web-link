@@ -163,6 +163,10 @@ describe('loadConfig', () => {
 
     fs.writeFileSync(configPath, JSON.stringify({ interactive: { mode: 'surprise' } }));
     expect(loadConfig({ configPath }).interactiveMode).toBe('off');
+
+    // noVNC was removed: bwl is agent-only, there is no human viewing mode.
+    fs.writeFileSync(configPath, JSON.stringify({ interactive: { mode: 'novnc' } }));
+    expect(loadConfig({ configPath }).interactiveMode).toBe('off');
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

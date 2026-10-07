@@ -1,13 +1,19 @@
 # bloom-web-link Agent Guide
 
-Headless browser automation server for AI agents. Run locally or deploy to any cloud provider.
+Headless browser automation server for AI agents. Runs in Docker only.
+
+## Rules for coding agents
+
+- **Never run `git commit`, `git push`, or other history-changing git commands** (amend, rebase, reset, stash). The maintainer manages git. Make changes in the working tree and leave them uncommitted.
+- Write unit tests for every feature and bug fix. Jest tests live in `tests/unit` (and `tests/e2e` when a real browser is needed). Web UI (TypeScript) tests live in `tests/web-ui` and run with `bun test`.
+- The dashboard (`src/web-ui`) is bind-mounted by `compose.yaml` and served from disk, so edits show up on browser reload without rebuilding the container. Changes to `server.js`, `lib/`, or the rest of `src/` still need `docker compose up -d --build`.
 
 ## Quick Start for Agents
 
 ```bash
-# Install and start
-npm install && npm start
-# Server runs on http://localhost:9377
+# Build and start the container
+docker compose up -d --build
+# MCP + REST on http://localhost:9377, dashboard on http://localhost:6080
 ```
 
 ## Core Workflow
@@ -159,8 +165,6 @@ docker run -p 9377:9377 bloom-web-link
 - `plugins/` - Plugin directory (loaded per bwl.config.json)
 - `plugins/youtube/` - Default plugin: YouTube transcript extraction
 - `scripts/install-plugin-deps.sh` - Installs plugin deps (apt.txt + post-install.sh)
-- `plugins/vnc/index.js` - VNC plugin routes (no `child_process` -- spawning isolated in `vnc-launcher.js`)
-- `plugins/vnc/vnc-launcher.js` - VNC process management (`child_process` isolated here)
 - `plugins/persistence/index.js` - Session persistence lifecycle hooks
 - `lib/persistence.js` - Atomic storage state read/write
 - `lib/inflight.js` - Inflight request coalescing
@@ -249,7 +253,7 @@ app.post('/tabs/:tabId/click', async (req, res) => {
 The codebase separates concerns across files for clarity and auditability:
 
 - **Configuration**: `process.env` reads live in `lib/config.js`, which exports a plain config object. No other file reads environment variables directly.
-- **Subprocess management**: `child_process` usage lives in dedicated launcher modules (`lib/launcher.js`, `plugins/youtube/youtube.js`, `plugins/vnc/vnc-launcher.js`), not in route handlers.
+- **Subprocess management**: `child_process` usage lives in dedicated launcher modules (`lib/launcher.js`, `plugins/youtube/youtube.js`), not in route handlers.
 - **Route handlers**: `server.js` defines Express routes but delegates env/config reads and subprocess spawning to the modules above.
 - **Metrics**: `lib/metrics.js` lazy-loads prom-client. `lib/request-utils.js` handles HTTP method classification.
 
@@ -396,7 +400,7 @@ Other events use regular `events.emit()` (fire-and-forget).
 Modify payload objects in-place:
 
 ```js
-// Change Xvfb resolution (e.g., for VNC plugin)
+// Change Xvfb resolution
 events.on('browser:launching', ({ options }) => {
   options.virtual_display_resolution = '1920x1080x24';
 });
@@ -413,10 +417,8 @@ events.on('session:creating', ({ userId, contextOptions }) => {
 Plugins that need system packages list them one per line in `apt.txt`:
 
 ```
-# plugins/vnc/apt.txt
-x11vnc
-novnc
-python3-websockify
+# plugins/youtube/apt.txt
+python3-minimal
 ```
 
 For binary downloads or setup not available via apt, add an executable `post-install.sh`:
@@ -476,11 +478,10 @@ Plugin sources can be:
 
 ### Default Plugins
 
-Three plugins ship by default:
+Two plugins ship by default:
 
 - **youtube** -- YouTube transcript extraction (enabled by default)
 - **persistence** -- Per-user session state persistence to `~/.bwl/profiles/` (enabled by default)
-- **vnc** -- Interactive browser login via noVNC (disabled by default, requires `ENABLE_VNC=1`)
 
 The `youtube` plugin ships as a default plugin -- it's listed in `bwl.config.json` and included in the base Docker image with its deps pre-installed. The base image runs `scripts/install-plugin-deps.sh` which reads the config and installs `apt.txt` packages + `post-install.sh` hooks for listed plugins.
 

@@ -5,15 +5,15 @@
   "type": "module",
   "main": "server.mjs",
   "license": "MIT",
-  "author": "Jo Inc <oss@askjo.ai>",
-  "homepage": "https://github.com/jo-inc/bloom-web-link/tree/master/mcp#readme",
+  "author": "Luniiya",
+  "homepage": "https://github.com/luniiya/bloom-web-link/tree/main/mcp#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jo-inc/bloom-web-link.git",
+    "url": "git+https://github.com/luniiya/bloom-web-link.git",
     "directory": "mcp"
   },
   "bugs": {
-    "url": "https://github.com/jo-inc/bloom-web-link/issues"
+    "url": "https://github.com/luniiya/bloom-web-link/issues"
   },
   "keywords": [
     "mcp",

@@ -47,8 +47,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/jo-inc/bloom-web-link:${{ env.VERSION }}
-            ghcr.io/jo-inc/bloom-web-link:latest
+            ghcr.io/luniiya/bloom-web-link:${{ env.VERSION }}
+            ghcr.io/luniiya/bloom-web-link:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

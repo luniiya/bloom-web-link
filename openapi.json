@@ -9,9 +9,8 @@
       "url": "https://opensource.org/licenses/MIT"
     },
     "contact": {
-      "name": "Jo Inc",
-      "url": "https://askjo.ai",
-      "email": "oss@askjo.ai"
+      "name": "Luniiya",
+      "url": "https://github.com/luniiya/bloom-web-link"
     }
   },
   "servers": [
@@ -3123,6 +3122,39 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/dashboard/tabs/{tabId}/activity": {
+      "get": {
+        "tags": [
+          "Browser"
+        ],
+        "summary": "Get a tab's call log",
+        "description": "Recent calls made against a tab (agent and dashboard), oldest first. Kept in memory, also for recently closed tabs.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only return entries with a sequence number greater than this."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Log entries."
           }
         }
       }

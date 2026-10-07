@@ -3,6 +3,9 @@ type Session = { userId: string; lastAccess: string; tabs: Tab[] };
 type State = { running: boolean; generatedAt: string; sessions: Session[] };
 type TabRef = { session: Session; tab: Tab };
 
+import { keyToPress } from "./keys.ts";
+import { formatActivity, mergeActivity, type ActivityEntry } from "./activity.ts";
+
 export {};
 
 const gridView = document.querySelector<HTMLElement>("#grid-view")!;
@@ -24,6 +27,8 @@ const detailUser = document.querySelector<HTMLElement>("#detail-user")!;
 const detailScreen = document.querySelector<HTMLButtonElement>("#detail-screen")!;
 const detailImg = document.querySelector<HTMLImageElement>("#detail-img")!;
 const detailMissing = document.querySelector<HTMLElement>("#detail-missing")!;
+const activityList = document.querySelector<HTMLOListElement>("#activity-list")!;
+const activityEmpty = document.querySelector<HTMLElement>("#activity-empty")!;
 
 let accessKey = localStorage.getItem("bwl-access-key") || "";
 let refreshing = false;
@@ -202,19 +207,78 @@ function renderGrid(state: State) {
   document.querySelector("#updated")!.textContent = new Date(state.generatedAt).toLocaleTimeString();
 }
 
+// --- Activity log: every call made against the open tab, appended as it happens. ---
+let activityTabId = "";
+let activityEntries: ActivityEntry[] = [];
+let activityLoading = false;
+
+function renderActivity() {
+  activityEmpty.hidden = activityEntries.length > 0;
+  const stickToBottom = activityList.scrollHeight - activityList.scrollTop - activityList.clientHeight < 24;
+  activityList.replaceChildren(...activityEntries.map((entry) => {
+    const row = formatActivity(entry);
+    const item = document.createElement("li");
+    item.classList.toggle("failed", row.failed);
+    item.classList.toggle("from-dashboard", row.fromDashboard);
+    for (const [cls, text] of [["time", row.time], ["action", row.action], ["detail", row.detail], ["meta", row.meta]]) {
+      const span = document.createElement("span");
+      span.className = cls!;
+      span.textContent = text!;
+      if (cls === "detail") span.title = text!;
+      item.append(span);
+    }
+    return item;
+  }));
+  if (stickToBottom) activityList.scrollTop = activityList.scrollHeight;
+}
+
+async function refreshActivity(tabId: string) {
+  if (tabId !== activityTabId) {
+    activityTabId = tabId;
+    activityEntries = [];
+    renderActivity();
+  }
+  if (activityLoading) return;
+  activityLoading = true;
+  try {
+    const since = activityEntries.at(-1)?.seq ?? 0;
+    const query = new URLSearchParams({ tabId, since: String(since) });
+    const response = await fetch(`/api/activity?${query}`, { headers: authHeaders() });
+    if (!response.ok || tabId !== activityTabId) return;
+    const { entries } = await response.json() as { entries: ActivityEntry[] };
+    if (entries.length === 0) return;
+    activityEntries = mergeActivity(activityEntries, entries);
+    renderActivity();
+  } catch {
+    // Transient; the next poll retries.
+  } finally {
+    activityLoading = false;
+  }
+}
+
+// Size the live view to the browser viewport's real aspect ratio (no letterboxing).
+detailImg.addEventListener("load", () => {
+  if (detailImg.naturalWidth && detailImg.naturalHeight) {
+    detailScreen.style.setProperty("--screen-ratio", `${detailImg.naturalWidth} / ${detailImg.naturalHeight}`);
+  }
+});
+
 // --- Detail: the single interactive view. Click-to-control only lives here. ---
 let detailClickBound = false;
 
 function renderDetail(state: State, userId: string, tabId: string) {
+  void refreshActivity(tabId);
   const session = state.sessions.find((s) => s.userId === userId);
   const tab = session?.tabs.find((t) => t.tabId === tabId);
   if (!session || !tab) {
+    // Closed: keep showing what it was (if this page saw it open) plus its log.
+    const last = closedTabs.get(`${userId}:${tabId}`);
     detailMissing.hidden = false;
     detailScreen.hidden = true;
-    detailTitle.textContent = "";
-    detailUrl.textContent = "";
-    detailSession.textContent = "";
-    detailUser.textContent = "";
+    detailTitle.textContent = last ? last.tab.title || "Untitled tab" : "";
+    detailUrl.textContent = last?.tab.url ?? "";
+    detailSession.textContent = last?.tab.sessionKey ?? "";
+    detailUser.textContent = shortId(userId);
     return;
   }
   detailMissing.hidden = true;
@@ -239,6 +303,7 @@ function renderDetail(state: State, userId: string, tabId: string) {
       const offsetY = (bounds.height - contentHeight) / 2;
       const x = (event.clientX - bounds.left - offsetX) / ratio;
       const y = (event.clientY - bounds.top - offsetY) / ratio;
+      detailScreen.focus();
       if (x < 0 || y < 0 || x > detailImg.naturalWidth || y > detailImg.naturalHeight) return;
       await fetch("/api/click", {
         method: "POST",
@@ -249,6 +314,61 @@ function renderDetail(state: State, userId: string, tabId: string) {
     });
   }
 }
+
+// --- Keyboard: while the detail screen has focus, keystrokes go to the page. ---
+// Printable characters are batched briefly and typed into the page's focused
+// element; everything else (Enter, arrows, Ctrl/Cmd chords) is a key press.
+// A promise chain keeps text and presses in the order they were typed.
+let keyboardChain: Promise<unknown> = Promise.resolve();
+let pendingText = "";
+let flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+function sendKeyboard(input: { text: string } | { key: string }) {
+  const route = parseRoute();
+  if (route.kind !== "detail") return;
+  keyboardChain = keyboardChain
+    .then(() => fetch("/api/keyboard", {
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify({ userId: route.userId, tabId: route.tabId, ...input }),
+    }))
+    .catch(() => {})
+    .then(() => queueScreenshot(detailImg, detailScreen, route.userId, route.tabId, true));
+}
+
+function flushText() {
+  clearTimeout(flushTimer);
+  flushTimer = undefined;
+  if (!pendingText) return;
+  const text = pendingText;
+  pendingText = "";
+  sendKeyboard({ text });
+}
+
+detailScreen.addEventListener("keydown", (event) => {
+  if (event.isComposing) return;
+  event.preventDefault();
+  const chord = event.ctrlKey || event.metaKey || event.altKey;
+  const key = keyToPress(event);
+  if (key === null) return;
+  if (!chord && event.key.length === 1) {
+    pendingText += event.key;
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(flushText, 120);
+    return;
+  }
+  flushText();
+  sendKeyboard({ key });
+});
+// Space/Enter would otherwise "click" the focused <button> on keyup.
+detailScreen.addEventListener("keyup", (event) => event.preventDefault());
+detailScreen.addEventListener("paste", (event) => {
+  const text = event.clipboardData?.getData("text/plain");
+  if (!text) return;
+  event.preventDefault();
+  pendingText += text;
+  flushText();
+});
 
 function renderRoute() {
   if (!latestState) return;

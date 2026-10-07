@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Bloom Web Link Control Room</title>
     <link rel="stylesheet" href="/styles.css" />
+    <!-- Icons: inline SVGs from Tabler Icons (MIT, https://tabler.io/icons) -->
   </head>
   <body>
     <header>
@@ -48,26 +49,35 @@
       </section>
 
       <section id="detail-view" hidden>
-        <button id="back-button" type="button" class="back-button">&larr; All tabs</button>
+        <button id="back-button" type="button" class="back-button"><svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0" /><path d="M5 12l6 6" /><path d="M5 12l6 -6" /></svg>All tabs</button>
+        <div class="detail-layout">
+        <div class="detail-main">
         <article class="tab-detail">
           <div class="tab-meta">
-            <div class="favicon">●</div>
+            <div class="favicon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M3.6 9h16.8" /><path d="M3.6 15h16.8" /><path d="M11.5 3a17 17 0 0 0 0 18" /><path d="M12.5 3a17 17 0 0 1 0 18" /></svg></div>
             <div class="titles"><h2 id="detail-title"></h2><p class="url" id="detail-url"></p></div>
             <span class="session-pill" id="detail-session"></span>
           </div>
-          <button id="detail-screen" class="screen" type="button" title="Click to interact at this position">
+          <button id="detail-screen" class="screen" type="button" title="Click to interact; keystrokes go to the page while focused">
             <img id="detail-img" alt="Live browser tab screenshot" />
             <span class="loading">Loading view…</span>
           </button>
-          <div class="tab-footer"><span class="user" id="detail-user"></span><span class="hint">click the page to interact</span></div>
+          <div class="tab-footer"><span class="user" id="detail-user"></span><span class="hint" id="detail-hint">click the page to interact, then type</span></div>
         </article>
-        <p id="detail-missing" class="empty" hidden><span class="fox">◢</span><h2>Tab closed</h2><p>This tab is no longer open.</p></p>
+        <div id="detail-missing" class="empty" hidden><h2>Tab closed</h2><p>This tab is no longer open.</p></div>
+        </div>
+        <aside class="activity" aria-label="Agent activity for this tab">
+          <h3 class="section-heading">Activity</h3>
+          <p id="activity-empty" class="activity-empty">No calls yet.</p>
+          <ol id="activity-list" class="activity-list"></ol>
+        </aside>
+        </div>
       </section>
     </main>
     <template id="tab-template">
       <button class="tab-card" type="button" title="Open this tab">
         <div class="tab-meta">
-          <div class="favicon">●</div>
+          <div class="favicon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M3.6 9h16.8" /><path d="M3.6 15h16.8" /><path d="M11.5 3a17 17 0 0 0 0 18" /><path d="M12.5 3a17 17 0 0 1 0 18" /></svg></div>
           <div class="titles"><h2></h2><p class="url"></p></div>
         </div>
         <div class="screen-thumb">

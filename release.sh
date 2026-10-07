@@ -81,5 +81,5 @@ git push origin master --follow-tags
 echo ""
 echo "✅ Release v${NEW_VERSION} triggered"
 echo "   CI will publish @askjo/bloom-web-link@${NEW_VERSION} with provenance"
-echo "   Watch: https://github.com/jo-inc/bloom-web-link/actions"
+echo "   Watch: https://github.com/luniiya/bloom-web-link/actions"
 echo "   Package: https://www.npmjs.com/package/@askjo/bloom-web-link"

@@ -5,18 +5,18 @@ describe('virtual display plugin capability', () => {
   test('uses the registered plugin provider instead of the default provider', () => {
     const registry = createVirtualDisplayRegistry(() => ({ owner: 'core' }));
 
-    registry.register('vnc', () => ({ owner: 'vnc' }));
+    registry.register('display-a', () => ({ owner: 'display-a' }));
 
-    expect(registry.owner).toBe('vnc');
-    expect(registry.create()).toEqual({ owner: 'vnc' });
+    expect(registry.owner).toBe('display-a');
+    expect(registry.create()).toEqual({ owner: 'display-a' });
   });
 
   test('rejects a second plugin provider instead of relying on load order', () => {
     const registry = createVirtualDisplayRegistry(() => ({ owner: 'core' }));
-    registry.register('vnc', () => ({ owner: 'vnc' }));
+    registry.register('display-a', () => ({ owner: 'display-a' }));
 
     expect(() => registry.register('other-display', () => ({ owner: 'other' }))).toThrow(
-      '"vnc" already owns the capability; "other-display" cannot also provide it'
+      '"display-a" already owns the capability; "other-display" cannot also provide it'
     );
   });
 });

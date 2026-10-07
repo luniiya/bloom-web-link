@@ -2,16 +2,15 @@
   "openapi": "3.0.3",
   "info": {
     "title": "bloom-web-link",
-    "version": "1.6.0",
+    "version": "1.16.0",
     "description": "Anti-detection browser automation server for AI agents. Accessibility snapshots, element refs, session isolation, cookie import, proxy rotation, and structured logs.",
     "license": {
       "name": "MIT",
       "url": "https://opensource.org/licenses/MIT"
     },
     "contact": {
-      "name": "Jo Inc",
-      "url": "https://askjo.ai",
-      "email": "oss@askjo.ai"
+      "name": "Luniiya",
+      "url": "https://github.com/luniiya/bloom-web-link"
     }
   },
   "servers": [
@@ -59,7 +58,12 @@
       "BearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Bearer token matching BWL_API_KEY."
+        "description": "Bearer token matching BWL_API_KEY (per-route auth for sensitive endpoints like cookie import and traces)."
+      },
+      "AccessKeyAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Bearer token matching BWL_ACCESS_KEY. When set, gates all routes except /health, cookie import, and /stop. Acts as a superkey -- also accepted by endpoints that normally require BWL_API_KEY."
       }
     },
     "schemas": {
@@ -296,6 +300,105 @@
         }
       }
     },
+    "/pressure/cleanup": {
+      "post": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Proactive memory-pressure cleanup",
+        "description": "Closes tabs observed idle across multiple checks while preserving tabs\nwith active/queued operations. Never returns URLs, titles, cookies,\npage text, or user IDs. Defaults to dry-run mode.\n",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dryRun": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "When true, returns candidates without closing them."
+                  },
+                  "minIdleMs": {
+                    "type": "number",
+                    "default": 600000,
+                    "description": "Minimum idle time (ms) before a tab is eligible."
+                  },
+                  "maxTabsToClose": {
+                    "type": "number",
+                    "default": 4,
+                    "description": "Maximum tabs to close per invocation."
+                  },
+                  "minTabsPerSession": {
+                    "type": "number",
+                    "default": 1,
+                    "description": "Preserve at least this many tabs per session."
+                  },
+                  "closeEmptySessions": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Close sessions left with zero tabs after cleanup."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cleanup result with before/after counts and hashed metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "dryRun": {
+                      "type": "boolean"
+                    },
+                    "before": {
+                      "type": "object",
+                      "properties": {
+                        "sessions": {
+                          "type": "integer"
+                        },
+                        "tabs": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "after": {
+                      "type": "object",
+                      "properties": {
+                        "sessions": {
+                          "type": "integer"
+                        },
+                        "tabs": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "candidates": {
+                      "type": "integer"
+                    },
+                    "closed": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "preserved": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tabs": {
       "post": {
         "tags": [
@@ -352,6 +455,15 @@
                     },
                     "url": {
                       "type": "string"
+                    },
+                    "httpStatus": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "HTTP status of the optional initial document navigation."
+                    },
+                    "navigationOk": {
+                      "type": "boolean",
+                      "description": "False when the optional initial document navigation returned HTTP 400 or higher."
                     }
                   }
                 }
@@ -502,11 +614,31 @@
         },
         "responses": {
           "200": {
-            "description": "Navigation result with snapshot.",
+            "description": "Navigation result. Destination HTTP status is reported even when a rendered error page is available.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "tabId": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "httpStatus": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "HTTP status of the final document navigation when available."
+                    },
+                    "navigationOk": {
+                      "type": "boolean",
+                      "description": "False when the final document returned an HTTP status of 400 or greater."
+                    }
+                  }
                 }
               }
             }
@@ -604,6 +736,10 @@
                     "snapshot": {
                       "type": "string"
                     },
+                    "structure": {
+                      "type": "object",
+                      "description": "Optional bounded read-only DOM summary of forms and tables. The snapshot field remains unchanged."
+                    },
                     "refsCount": {
                       "type": "integer"
                     },
@@ -637,12 +773,117 @@
         }
       }
     },
+    "/tabs/{tabId}/text": {
+      "get": {
+        "tags": [
+          "Tabs"
+        ],
+        "summary": "Lightweight text-only page read",
+        "description": "Returns visible page text with no accessibility tree, no element refs, and no screenshot. Use to cheaply poll page state (e.g. did a value change) between interactions; use /snapshot when you need refs to click/type against.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "selector",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Scope the text read to one element instead of the whole page."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page text."
+          },
+          "404": {
+            "description": "Tab not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/state": {
+      "post": {
+        "tags": [
+          "Tabs"
+        ],
+        "summary": "Structured element state (color, ARIA flags) without a screenshot",
+        "description": "Reads computed style and ARIA state for elements matching each given selector -- covers cases plain text can't (a rule shown in red vs green, a checkbox's checked state, a field's aria-invalid) without needing a screenshot.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "selectors"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-selector element state."
+          },
+          "404": {
+            "description": "Tab not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tabs/{tabId}/wait": {
       "post": {
         "tags": [
           "Interaction"
         ],
-        "summary": "Wait for a selector or timeout",
+        "summary": "Wait for page readiness or a page condition",
         "parameters": [
           {
             "name": "tabId",
@@ -667,11 +908,38 @@
                     "type": "string"
                   },
                   "selector": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "CSS selector to wait for."
+                  },
+                  "text": {
+                    "type": "string",
+                    "description": "Visible text to wait for."
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "URL or Playwright glob pattern to wait for."
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "attached",
+                      "detached",
+                      "visible",
+                      "hidden"
+                    ],
+                    "default": "visible"
                   },
                   "timeout": {
                     "type": "integer",
                     "description": "Max wait in ms."
+                  },
+                  "waitForNetwork": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "dismissConsent": {
+                    "type": "boolean",
+                    "default": false
                   }
                 }
               }
@@ -794,6 +1062,288 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Page changed during the click; caller should take a fresh snapshot and retry with current refs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/batch": {
+      "post": {
+        "tags": [
+          "Interaction"
+        ],
+        "summary": "Run multiple actions in one round trip",
+        "description": "Executes a sequence of click/type/wait/scroll/navigate/read_text actions against one tab in a\nsingle request, so a multi-step interaction (e.g. click a field, type into it, wait for a\nresult) costs one round trip instead of one per action. Stops at the first failing action\nunless continueOnError is true. Refs are refreshed after each click, type, and navigation,\npreserving DOM identity across dynamic reordering before the next action runs.\nThis is a simplified/faster path: it does not include the Google-SERP-specific handling that\nthe individual bwl_click/bwl_navigate tools have, so prefer those for search result pages.\n",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "actions"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Batch result -- one entry per action, in order."
+          },
+          "404": {
+            "description": "Tab not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/mouse": {
+      "post": {
+        "tags": [
+          "Interaction"
+        ],
+        "summary": "Move, hover, or drag the mouse",
+        "description": "Performs native Playwright mouse actions. Drag accepts either viewport coordinates or stable sourceRef/targetRef element refs.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "action"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "move",
+                      "hover",
+                      "drag"
+                    ]
+                  },
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "ref": {
+                    "type": "string",
+                    "description": "Element ref for hover."
+                  },
+                  "sourceRef": {
+                    "type": "string",
+                    "description": "Stable element ref for the drag source. Requires targetRef."
+                  },
+                  "targetRef": {
+                    "type": "string",
+                    "description": "Stable element ref for the drag destination. Requires sourceRef."
+                  },
+                  "selector": {
+                    "type": "string",
+                    "description": "CSS selector for hover."
+                  },
+                  "start": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "end": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "button": {
+                    "type": "string",
+                    "enum": [
+                      "left",
+                      "right",
+                      "middle"
+                    ],
+                    "default": "left"
+                  },
+                  "steps": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mouse action completed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "action": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid mouse action or coordinates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tab not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/upload": {
+      "post": {
+        "tags": [
+          "Interaction"
+        ],
+        "summary": "Attach a file to an upload control",
+        "description": "Attaches files from the configured upload directory without going through the native OS file dialog. Set BWL_UPLOADS_DIR to a directory that contains the files (default: ~/.bwl/uploads). Two strategies are tried in order: (1) if an <input type=\"file\"> is already present, call Playwright setInputFiles on it directly (works for hidden inputs); (2) otherwise arm a filechooser listener, activate the trigger element (ref or selector) via keyboard (focus + Enter) then a forced click as fallback, and call setFiles on the resulting chooser. Each path must be an absolute path that resolves inside the configured upload directory.\n",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "path"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "description": "Absolute path, or array of paths, that resolves within BWL_UPLOADS_DIR.",
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "ref": {
+                    "type": "string",
+                    "description": "Trigger element ref (e.g. e36). Optional when an input[type=file] already exists."
+                  },
+                  "selector": {
+                    "type": "string",
+                    "description": "Trigger element CSS/Playwright selector. Optional when an input[type=file] already exists."
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "default": 12000,
+                    "description": "Overall budget in ms to wait for an upload UI (in-app panel input or native file chooser) to appear after the trigger is activated. Ignored values (non-numeric or <= 0) fall back to the default."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "File(s) attached."
+          },
+          "400": {
+            "description": "Bad request (missing path/userId; non-regular file; or a path that is missing or outside the configured upload directory)."
+          },
+          "404": {
+            "description": "Tab not found."
           }
         }
       }
@@ -854,6 +1404,95 @@
         "responses": {
           "200": {
             "description": "Type result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tab not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Page changed or target became invalid; caller should take a fresh snapshot and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/select": {
+      "post": {
+        "tags": [
+          "Interaction"
+        ],
+        "summary": "Select a native form option",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "option"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "ref": {
+                    "type": "string"
+                  },
+                  "selector": {
+                    "type": "string"
+                  },
+                  "option": {
+                    "type": "string",
+                    "description": "Visible option label or HTML value."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Option selected.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1010,6 +1649,91 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Tab not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/viewport": {
+      "post": {
+        "tags": [
+          "Interaction"
+        ],
+        "summary": "Set the page viewport size",
+        "description": "Physically resizes the page via Playwright's `page.setViewportSize`, triggering a real layout reflow. Use for responsive testing — `window.resizeTo()` is a no-op on non-popup windows.\n",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "width",
+                  "height"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 4000
+                  },
+                  "height": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 4000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Viewport set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "width": {
+                      "type": "integer"
+                    },
+                    "height": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Width or height missing or out of range."
           },
           "404": {
             "description": "Tab not found.",
@@ -1285,6 +2009,53 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/fetch-current-resource": {
+      "post": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Save the current tab's PDF as a download artifact",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved PDF download artifact."
+          },
+          "404": {
+            "description": "Tab not found."
+          },
+          "415": {
+            "description": "Current resource is not a PDF."
           }
         }
       }
@@ -1629,6 +2400,26 @@
           },
           "404": {
             "description": "Tab not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Page navigated while evaluating; caller should retry once the page settles.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Browser session expired; caller should retry to get a fresh session.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2266,6 +3057,104 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/dashboard/state": {
+      "get": {
+        "tags": [
+          "Browser"
+        ],
+        "summary": "Get dashboard browser state",
+        "description": "Returns all active sessions and tabs for the local container dashboard. This route is protected by the global access key when configured.",
+        "responses": {
+          "200": {
+            "description": "Current browser, session, and tab state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "running": {
+                      "type": "boolean"
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "sessions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "lastAccess": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "tabs": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "tabId": {
+                                  "type": "string"
+                                },
+                                "sessionKey": {
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dashboard/tabs/{tabId}/activity": {
+      "get": {
+        "tags": [
+          "Browser"
+        ],
+        "summary": "Get a tab's call log",
+        "description": "Recent calls made against a tab (agent and dashboard), oldest first. Kept in memory, also for recently closed tabs.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only return entries with a sequence number greater than this."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Log entries."
           }
         }
       }
