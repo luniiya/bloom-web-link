@@ -100,18 +100,16 @@ export function createMcpHandler(config: ContainerConfig) {
     if (!transport && request.method === "POST" && isInitializeRequest(parsedBody)) {
       const requestedUserId = safeUserId(request.headers.get("x-bwl-user-id"));
       const userId = requestedUserId || `mcp-${randomUUID()}`;
-      const closeBrowserSession = async (id: string) => {
-        transports.delete(id);
-        await fetch(`http://${config.coreHost}:${config.corePort}/sessions/${encodeURIComponent(userId)}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${config.internalAccessKey}` },
-        }).catch(() => {});
-      };
       transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         enableJsonResponse: true,
         onsessioninitialized: (id) => { transports.set(id, transport!); },
-        onsessionclosed: closeBrowserSession,
+        // An MCP transport is disposable; a browser session is not. Keeping
+        // the latter alive lets a replacement agent reconnect with the same
+        // X-BWL-User-Id and continue its tab after a client disconnects.
+        // Core session expiry and explicit DELETE /sessions/:userId remain the
+        // lifecycle controls.
+        onsessionclosed: (id) => { transports.delete(id); },
       });
       transport.onclose = () => {
         if (transport?.sessionId) transports.delete(transport.sessionId);

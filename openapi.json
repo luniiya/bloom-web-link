@@ -1083,7 +1083,7 @@
           "Interaction"
         ],
         "summary": "Run multiple actions in one round trip",
-        "description": "Executes a sequence of click/type/wait/scroll/navigate/read_text actions against one tab in a\nsingle request, so a multi-step interaction (e.g. click a field, type into it, wait for a\nresult) costs one round trip instead of one per action. Stops at the first failing action\nunless continueOnError is true. Refs are refreshed once after the whole batch (not per\naction) -- call bwl_snapshot afterward if you need refs for an element that appeared mid-batch.\nThis is a simplified/faster path: it does not include the Google-SERP-specific handling that\nthe individual bwl_click/bwl_navigate tools have, so prefer those for search result pages.\n",
+        "description": "Executes a sequence of click/type/wait/scroll/navigate/read_text actions against one tab in a\nsingle request, so a multi-step interaction (e.g. click a field, type into it, wait for a\nresult) costs one round trip instead of one per action. Stops at the first failing action\nunless continueOnError is true. Refs are refreshed after each click, type, and navigation,\npreserving DOM identity across dynamic reordering before the next action runs.\nThis is a simplified/faster path: it does not include the Google-SERP-specific handling that\nthe individual bwl_click/bwl_navigate tools have, so prefer those for search result pages.\n",
         "parameters": [
           {
             "name": "tabId",
@@ -1131,7 +1131,7 @@
           "Interaction"
         ],
         "summary": "Move, hover, or drag the mouse",
-        "description": "Performs native Playwright mouse actions in viewport CSS-pixel coordinates.",
+        "description": "Performs native Playwright mouse actions. Drag accepts either viewport coordinates or stable sourceRef/targetRef element refs.",
         "parameters": [
           {
             "name": "tabId",
@@ -1173,6 +1173,14 @@
                   "ref": {
                     "type": "string",
                     "description": "Element ref for hover."
+                  },
+                  "sourceRef": {
+                    "type": "string",
+                    "description": "Stable element ref for the drag source. Requires targetRef."
+                  },
+                  "targetRef": {
+                    "type": "string",
+                    "description": "Stable element ref for the drag destination. Requires sourceRef."
                   },
                   "selector": {
                     "type": "string",

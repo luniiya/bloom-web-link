@@ -35,6 +35,50 @@ function createTestApp() {
       </body></html>
     `);
   });
+
+  // Two controls deliberately share an accessible name. Clicking one moves it
+  // after its sibling, reproducing matching/sortable UIs where role+name+nth
+  // locators otherwise silently retarget on the next action.
+  app.get('/reordering-controls', (req, res) => {
+    res.send(`
+      <!doctype html><html><head><title>Reordering Controls</title></head><body>
+        <output id="result">none</output>
+        <div id="choices">
+          <button aria-label="Choice" data-choice="alpha">Alpha</button>
+          <button aria-label="Choice" data-choice="beta">Beta</button>
+        </div>
+        <script>
+          const choices = document.querySelector('#choices');
+          document.querySelectorAll('[data-choice]').forEach((button) => {
+            button.addEventListener('click', () => {
+              document.querySelector('#result').textContent = button.dataset.choice;
+              choices.append(button);
+            });
+          });
+        </script>
+      </body></html>
+    `);
+  });
+
+  app.get('/drag-targets', (req, res) => {
+    res.send(`
+      <!doctype html><html><head><title>Drag Targets</title></head><body>
+        <output id="result">none</output>
+        <button id="source" draggable="true">Drag Alpha</button>
+        <button id="target">Drop Zone</button>
+        <script>
+          const source = document.querySelector('#source');
+          const target = document.querySelector('#target');
+          source.addEventListener('dragstart', (event) => event.dataTransfer.setData('text/plain', 'alpha'));
+          target.addEventListener('dragover', (event) => event.preventDefault());
+          target.addEventListener('drop', (event) => {
+            event.preventDefault();
+            document.querySelector('#result').textContent = event.dataTransfer.getData('text/plain');
+          });
+        </script>
+      </body></html>
+    `);
+  });
   
   // A deterministic upstream failure for navigation error handling tests.
   app.get('/unavailable', (req, res) => {

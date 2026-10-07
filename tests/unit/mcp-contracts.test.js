@@ -139,6 +139,9 @@ describe('buildRequest', () => {
 
     const mouse = buildRequest('bwl_mouse', { tabId: 't1', action: 'drag', start: { x: 1, y: 2 }, end: { x: 3, y: 4 } }, CTX);
     expect(mouse.body).toEqual({ action: 'drag', start: { x: 1, y: 2 }, end: { x: 3, y: 4 }, userId: 'u1' });
+
+    const refDrag = buildRequest('bwl_mouse', { tabId: 't1', action: 'drag', sourceRef: 'e1', targetRef: 'e2' }, CTX);
+    expect(refDrag.body).toEqual({ action: 'drag', sourceRef: 'e1', targetRef: 'e2', userId: 'u1' });
   });
 
   test('evaluate body is exactly { userId, expression }', () => {

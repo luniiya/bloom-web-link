@@ -3,6 +3,7 @@ services:
     build:
       context: .
     image: bloom-web-link:local
+    restart: unless-stopped
     shm_size: 2gb
     ports:
       - "127.0.0.1:9377:9377"

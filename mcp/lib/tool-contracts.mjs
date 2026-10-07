@@ -174,7 +174,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'bwl_mouse',
-    description: 'Perform visual mouse movement, element hover, or coordinate drag. Coordinates are viewport CSS pixels matching the screenshot.',
+    description: 'Perform visual mouse movement, element hover, or drag. Drag accepts stable sourceRef + targetRef (preferred for dynamic UIs) or screenshot coordinates.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -184,6 +184,8 @@ export const TOOL_DEFS = [
         y: { type: 'number', minimum: 0, description: 'Move destination Y coordinate' },
         ref: { type: 'string', description: 'Element ref to hover' },
         selector: { type: 'string', description: 'CSS selector to hover' },
+        sourceRef: { type: 'string', description: 'Stable ref of the drag source; requires targetRef' },
+        targetRef: { type: 'string', description: 'Stable ref of the drop target; requires sourceRef' },
         start: {
           type: 'object',
           description: 'Drag start coordinates',

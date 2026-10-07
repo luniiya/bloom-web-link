@@ -14,7 +14,7 @@ The default Docker image also exposes stateful Streamable HTTP MCP directly:
 http://localhost:9377/mcp
 ```
 
-Each initialized MCP connection receives an isolated Bloom Web Link browser context. Clients may send `X-Bloom Web Link-User-Id` during initialization to choose a stable user ID; otherwise the server generates one. If `BWL_ACCESS_KEY` is configured, send it as `Authorization: Bearer <key>`.
+Each initialized MCP connection receives an isolated Bloom Web Link browser context. Clients may send `X-BWL-User-Id` during initialization to choose a stable user ID; otherwise the server generates one. A transport disconnect does not close that browser context: reconnect with the same user ID to resume it. If `BWL_ACCESS_KEY` is configured, send it as `Authorization: Bearer <key>`.
 
 Use the stdio adapter documented below only when the MCP host cannot connect to a remote Streamable HTTP endpoint.
 
@@ -217,7 +217,7 @@ Element refs are unambiguous and preferred over CSS selectors — a selector tha
 | Var | Default | Purpose |
 |-----|---------|---------|
 | `BWL_BASE_URL` | `http://localhost:9377` | REST server URL |
-| `BWL_USER_ID` | `mcp-<random>` | Session isolation (one MCP server = one bwl session) |
+| `BWL_USER_ID` | `mcp-<random>` | Browser-session identity. Set a durable value (for example `bwl-shared`) in a host-wide MCP config to let later agents resume the same tabs and storage. Agents sharing it must coordinate writes. |
 | `BWL_SESSION_KEY` | `default` | Tab partition within the user |
 | `BWL_ACCESS_KEY` | _(unset)_ | Global bearer token gating the REST server (superkey). If set, forwarded as `Authorization: Bearer <key>` on **every** tool call automatically — must match the REST server's own `BWL_ACCESS_KEY`. Without this, a globally-authenticated REST server rejects all tool calls except cookie import. |
 | `BWL_API_KEY` | _(unset)_ | Self-chosen secret gating cookie import. Optional on localhost; required on remote/production and must match the REST server's `BWL_API_KEY`. Only affects `bwl_import_cookies`. |

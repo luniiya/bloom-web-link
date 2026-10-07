@@ -2246,7 +2246,55 @@ async function extractGoogleSerp(page) {
 
 const REFRESH_READY_TIMEOUT_MS = 2500;
 
-async function buildRefs(page) {
+function markerFromRefInfo(info) {
+  if (info?.marker) return info.marker;
+  const match = info?.selector?.match(/^\[data-bwl-ref="([^"]+)"\]$/);
+  return match?.[1] || null;
+}
+
+function stableRefState(existingRefs) {
+  const byMarker = new Map();
+  let maxId = 0;
+  for (const [refId, info] of existingRefs || []) {
+    const marker = markerFromRefInfo(info);
+    if (marker) byMarker.set(marker, refId);
+    const numericId = Number.parseInt(String(refId).slice(1), 10);
+    if (Number.isInteger(numericId)) maxId = Math.max(maxId, numericId);
+  }
+  return { byMarker, nextId: maxId + 1 };
+}
+
+async function preserveRefIdentity(locator, info, refs, state) {
+  // A role/name/nth locator is only a way to find an element, not its identity:
+  // sorted/matching widgets can reorder identical controls between actions. Mark
+  // the actual DOM node so a later ref refresh keeps the original ref attached
+  // to that node while it is moved in the DOM.
+  let marker;
+  try {
+    marker = await locator.evaluate((element) => element.getAttribute('data-bwl-ref'));
+  } catch {
+    return null;
+  }
+
+  let refId = marker && state.byMarker.get(marker);
+  if (!refId) refId = `e${state.nextId++}`;
+  marker ||= `bwl-ref-${refId}`;
+
+  try {
+    await locator.evaluate((element, value) => element.setAttribute('data-bwl-ref', value), marker);
+  } catch {
+    return null;
+  }
+
+  refs.set(refId, {
+    ...info,
+    marker,
+    selector: `[data-bwl-ref="${marker}"]`,
+  });
+  return refId;
+}
+
+async function buildRefs(page, existingRefs = new Map()) {
   const refs = new Map();
   
   if (!page || page.isClosed()) {
@@ -2271,7 +2319,7 @@ async function buildRefs(page) {
   
   try {
     const result = await Promise.race([
-      _buildRefsInner(page, refs, start),
+      _buildRefsInner(page, refs, start, existingRefs),
       timeoutPromise
     ]);
     clearTimeout(timerId);
@@ -2286,7 +2334,7 @@ async function buildRefs(page) {
   }
 }
 
-async function _buildRefsInner(page, refs, start) {
+async function _buildRefsInner(page, refs, start, existingRefs) {
   await waitForPageReady(page, {
     timeout: REFRESH_READY_TIMEOUT_MS,
     waitForNetwork: false,
@@ -2324,6 +2372,7 @@ async function _buildRefsInner(page, refs, start) {
   
   const lines = ariaYaml.split('\n');
   let refCounter = 1;
+  const refState = stableRefState(existingRefs);
   
   // Track occurrences of each role+name combo for nth disambiguation
   const seenCounts = new Map(); // "role:name" -> count
@@ -2346,8 +2395,9 @@ async function _buildRefsInner(page, refs, start) {
         const nth = seenCounts.get(key) || 0;
         seenCounts.set(key, nth + 1);
         
-        const refId = `e${refCounter++}`;
-        refs.set(refId, { role: normalizedRole, name: normalizedName, nth });
+        const locator = page.getByRole(normalizedRole, normalizedName ? { name: normalizedName } : undefined).nth(nth);
+        const refId = await preserveRefIdentity(locator, { role: normalizedRole, name: normalizedName, nth }, refs, refState);
+        if (refId) refCounter++;
       }
     }
   }
@@ -2402,8 +2452,9 @@ async function _buildRefsInner(page, refs, start) {
               const nth = frameSeenCounts.get(key) || 0;
               frameSeenCounts.set(key, nth + 1);
               
-              const refId = `e${refCounter++}`;
-              refs.set(refId, { role: normalizedRole, name: normalizedName, nth, frameName: frameName || null, frameUrl });
+              const locator = frame.getByRole(normalizedRole, normalizedName ? { name: normalizedName } : undefined).nth(nth);
+              const refId = await preserveRefIdentity(locator, { role: normalizedRole, name: normalizedName, nth, frameName: frameName || null, frameUrl }, refs, refState);
+              if (refId) refCounter++;
             }
           }
         }
@@ -2548,11 +2599,6 @@ async function getAriaSnapshot(page) {
 function refToLocator(page, ref, refs) {
   const info = refs.get(ref);
   if (!info) return null;
-
-  // DOM-clickable fallback refs (see buildRefs) resolve by the data attribute
-  // stamped onto the element directly -- no role/name to disambiguate.
-  if (info.selector) return page.locator(info.selector);
-
   const { role, name, nth, frameName, frameUrl } = info;
 
   // If ref belongs to an iframe, resolve via frame locator
@@ -2566,6 +2612,8 @@ function refToLocator(page, ref, refs) {
       frame = page.frames().find(f => f.url() === frameUrl || f.url().startsWith(frameUrl.slice(0, 80)));
     }
     if (frame) {
+      // Stable identity markers are also valid inside frames.
+      if (info.selector) return frame.locator(info.selector);
       let locator = frame.getByRole(role, name ? { name } : undefined);
       locator = locator.nth(nth);
       return locator;
@@ -2573,6 +2621,10 @@ function refToLocator(page, ref, refs) {
     // Frame not found (navigated away?) — fall through to page-level resolution
     log('warn', 'refToLocator: frame not found for iframe ref', { ref, frameName, frameUrl: frameUrl?.slice(0, 60) });
   }
+
+  // DOM-clickable fallback refs and stable identity refs resolve by the data
+  // attribute stamped onto the original element, rather than by position.
+  if (info.selector) return page.locator(info.selector);
   
   let locator = page.getByRole(role, name ? { name } : undefined);
   
@@ -2592,7 +2644,7 @@ async function refreshTabRefs(tabState, options = {}) {
 
   const beforeUrl = tabState.page?.url?.() || '';
   const existingRefs = tabState.refs instanceof Map ? tabState.refs : new Map();
-  const refreshPromise = buildRefs(tabState.page);
+  const refreshPromise = buildRefs(tabState.page, existingRefs);
 
   let refreshedRefs;
   if (timeoutMs) {
@@ -2613,6 +2665,17 @@ async function refreshTabRefs(tabState, options = {}) {
       previousRefs: existingRefs.size,
     });
     return existingRefs;
+  }
+
+  // A timed/partial rebuild must never silently replace a known ref with a
+  // role/name/nth lookup for another control. Retain unmatched old markers on
+  // the same document: they either still resolve to their original node or
+  // fail safely if that node was re-rendered. Navigation intentionally skips
+  // this merge because every old marker belongs to a different document.
+  if (beforeUrl === afterUrl && existingRefs.size > 0) {
+    for (const [refId, info] of existingRefs) {
+      if (!refreshedRefs.has(refId)) refreshedRefs.set(refId, info);
+    }
   }
 
   return refreshedRefs;
@@ -4258,8 +4321,8 @@ app.post('/tabs/:tabId/click', async (req, res) => {
  *       Executes a sequence of click/type/wait/scroll/navigate/read_text actions against one tab in a
  *       single request, so a multi-step interaction (e.g. click a field, type into it, wait for a
  *       result) costs one round trip instead of one per action. Stops at the first failing action
- *       unless continueOnError is true. Refs are refreshed once after the whole batch (not per
- *       action) -- call bwl_snapshot afterward if you need refs for an element that appeared mid-batch.
+ *       unless continueOnError is true. Refs are refreshed after each click, type, and navigation,
+ *       preserving DOM identity across dynamic reordering before the next action runs.
  *       This is a simplified/faster path: it does not include the Google-SERP-specific handling that
  *       the individual bwl_click/bwl_navigate tools have, so prefer those for search result pages.
  *     parameters:
@@ -4309,6 +4372,15 @@ app.post('/tabs/:tabId/batch', async (req, res) => {
 
     const results = await withUserLimit(userId, () => withTabLock(tabId, async () => {
       const out = [];
+      const refreshAfterMutation = async (reason) => {
+        try {
+          tabState.refs = await refreshTabRefs(tabState, { reason });
+          return tabState.refs.size;
+        } catch (err) {
+          log('warn', 'batch ref refresh failed', { tabId, reason, error: err.message });
+          return null;
+        }
+      };
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i] || {};
         const type = action.type;
@@ -4351,7 +4423,7 @@ app.post('/tabs/:tabId/batch', async (req, res) => {
                 });
               }
               await tabState.page.waitForTimeout(300);
-              entry = { ok: true };
+              entry = { ok: true, refsCount: await refreshAfterMutation('batch_click') };
               break;
             }
             case 'type': {
@@ -4385,7 +4457,7 @@ app.post('/tabs/:tabId/batch', async (req, res) => {
                 throw new Error("type mode must be 'fill' or 'keyboard'");
               }
               if (pressEnter) await tabState.page.keyboard.press('Enter');
-              entry = { ok: true };
+              entry = { ok: true, refsCount: await refreshAfterMutation('batch_type') };
               break;
             }
             case 'wait': {
@@ -4428,7 +4500,12 @@ app.post('/tabs/:tabId/batch', async (req, res) => {
               if (!url) throw new Error('navigate requires url');
               const response = await tabState.page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAVIGATE_TIMEOUT_MS });
               tabState.visitedUrls.add(tabState.page.url());
-              entry = { ok: true, url: tabState.page.url(), httpStatus: response?.status() ?? null };
+              entry = {
+                ok: true,
+                url: tabState.page.url(),
+                httpStatus: response?.status() ?? null,
+                refsCount: await refreshAfterMutation('batch_navigate'),
+              };
               break;
             }
             case 'read_text': {
@@ -4475,7 +4552,7 @@ app.post('/tabs/:tabId/batch', async (req, res) => {
  *   post:
  *     tags: [Interaction]
  *     summary: Move, hover, or drag the mouse
- *     description: Performs native Playwright mouse actions in viewport CSS-pixel coordinates.
+ *     description: Performs native Playwright mouse actions. Drag accepts either viewport coordinates or stable sourceRef/targetRef element refs.
  *     parameters:
  *       - name: tabId
  *         in: path
@@ -4502,6 +4579,12 @@ app.post('/tabs/:tabId/batch', async (req, res) => {
  *               ref:
  *                 type: string
  *                 description: Element ref for hover.
+ *               sourceRef:
+ *                 type: string
+ *                 description: Stable element ref for the drag source. Requires targetRef.
+ *               targetRef:
+ *                 type: string
+ *                 description: Stable element ref for the drag destination. Requires sourceRef.
  *               selector:
  *                 type: string
  *                 description: CSS selector for hover.
@@ -4559,7 +4642,7 @@ app.post('/tabs/:tabId/mouse', async (req, res) => {
   const tabId = req.params.tabId;
   try {
     const {
-      userId, action, x, y, ref, selector, start, end,
+      userId, action, x, y, ref, selector, sourceRef, targetRef, start, end,
       button = 'left', steps = 10,
     } = req.body;
     if (!userId) return res.status(400).json({ error: 'userId required' });
@@ -4579,8 +4662,12 @@ app.post('/tabs/:tabId/mouse', async (req, res) => {
     if (action === 'hover' && ([!!ref, !!selector].filter(Boolean).length !== 1)) {
       return res.status(400).json({ error: 'hover requires exactly one of ref or selector' });
     }
-    if (action === 'drag' && (!validPoint(start) || !validPoint(end))) {
-      return res.status(400).json({ error: 'drag requires non-negative numeric start and end coordinates' });
+    const dragByRefs = !!sourceRef || !!targetRef;
+    if (action === 'drag' && dragByRefs && (typeof sourceRef !== 'string' || typeof targetRef !== 'string')) {
+      return res.status(400).json({ error: 'drag with refs requires both sourceRef and targetRef' });
+    }
+    if (action === 'drag' && !dragByRefs && (!validPoint(start) || !validPoint(end))) {
+      return res.status(400).json({ error: 'drag requires sourceRef + targetRef or non-negative numeric start and end coordinates' });
     }
     const selectorErr = selectorValidationError(selector);
     if (selectorErr) throw invalidSelectorError(selectorErr);
@@ -4607,22 +4694,40 @@ app.post('/tabs/:tabId/mouse', async (req, res) => {
         }
         await locator.hover({ timeout: Math.min(5000, HANDLER_TIMEOUT_MS - 1000) });
       } else {
+        let dragStart = start;
+        let dragEnd = end;
+        if (dragByRefs) {
+          const resolveDragRef = async (dragRef, reason) => {
+            let locator = refToLocator(tabState.page, dragRef, tabState.refs);
+            if (!locator) {
+              tabState.refs = await refreshTabRefs(tabState, { reason, timeoutMs: 4000 });
+              locator = refToLocator(tabState.page, dragRef, tabState.refs);
+            }
+            if (!locator) throw new StaleRefsError(dragRef, `e${tabState.refs.size}`, tabState.refs.size);
+            const box = await locator.boundingBox({ timeout: Math.min(5000, HANDLER_TIMEOUT_MS - 1000) });
+            if (!box) throw Object.assign(new Error(`Drag ref ${dragRef} is not visible`), { statusCode: 422 });
+            return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+          };
+          dragStart = await resolveDragRef(sourceRef, 'pre_drag_source');
+          dragEnd = await resolveDragRef(targetRef, 'pre_drag_target');
+        }
         let mouseIsDown = false;
         try {
-          await tabState.page.mouse.move(start.x, start.y);
+          await tabState.page.mouse.move(dragStart.x, dragStart.y);
           await tabState.page.mouse.down({ button });
           mouseIsDown = true;
-          await tabState.page.mouse.move(end.x, end.y, { steps });
+          await tabState.page.mouse.move(dragEnd.x, dragEnd.y, { steps });
         } finally {
           if (mouseIsDown) await tabState.page.mouse.up({ button }).catch(() => {});
         }
       }
       await tabState.page.waitForTimeout(150);
       tabState.lastSnapshot = null;
+      if (action === 'drag') tabState.refs = await refreshTabRefs(tabState, { reason: 'post_drag' }).catch(() => tabState.refs);
     }, HANDLER_TIMEOUT_MS));
 
     log('info', 'mouse action', { reqId: req.reqId, tabId, action, ref, selector });
-    res.json({ ok: true, action, url: tabState.page.url() });
+    res.json({ ok: true, action, url: tabState.page.url(), refsAvailable: tabState.refs.size > 0 });
   } catch (err) {
     log('error', 'mouse action failed', { reqId: req.reqId, tabId, error: err.message });
     handleRouteError(err, req, res);
