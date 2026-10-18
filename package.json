@@ -144,6 +144,18 @@
       {
         "name": "bwl_batch",
         "description": "Run several click/type/wait/scroll/navigate/read_text actions in one call"
+      },
+      {
+        "name": "bwl_wait_for_reply",
+        "description": "Wait for new chat messages and typing status without repeated snapshots"
+      },
+      {
+        "name": "bwl_keep_open",
+        "description": "Protect a tab from automatic cleanup"
+      },
+      {
+        "name": "bwl_tab_history",
+        "description": "Read closed-tab recovery information and saved text"
       }
     ]
   },

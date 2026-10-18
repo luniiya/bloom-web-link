@@ -67,7 +67,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   })),
 }));
 
-server.setRequestHandler(CallToolRequestSchema, async (req) => {
+server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
   const { name, arguments: args } = req.params;
   const def = TOOL_DEFS.find((t) => t.name === name);
   if (!def) {
@@ -82,7 +82,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       args || {},
       { userId: USER_ID, sessionKey: SESSION_KEY },
       BASE_URL,
-      CONFIG
+      { ...CONFIG, signal: extra.signal }
     );
     const content = adaptResponse(spec, payload);
     return { content };

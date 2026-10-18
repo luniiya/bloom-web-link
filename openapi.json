@@ -405,7 +405,7 @@
           "Tabs"
         ],
         "summary": "Create a new tab",
-        "description": "Creates a tab in the given session. Optionally navigates to an initial URL.",
+        "description": "Creates a tab in the given session. Optionally navigates to an initial URL. A navigation timeout preserves the tab and returns navigationOk false with its tabId and navigation_timeout code.",
         "requestBody": {
           "required": true,
           "content": {
@@ -507,7 +507,7 @@
           "Tabs"
         ],
         "summary": "List open tabs",
-        "description": "Returns all tabs for a given userId.",
+        "description": "Returns all tabs for a given userId, including lifetime protection status and any retained navigationError.",
         "parameters": [
           {
             "name": "userId",
@@ -971,6 +971,177 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/lifetime": {
+      "post": {
+        "tags": [
+          "Tabs"
+        ],
+        "summary": "Protect a tab from automatic cleanup",
+        "description": "Keep open until explicitly unpinned, or renew a 20-second dashboard viewing lease. Does not navigate or read page content.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "keepOpen": {
+                    "type": "boolean"
+                  },
+                  "viewing": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tab lifetime and protection status."
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "404": {
+            "description": "Tab not found."
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/wait-reply": {
+      "post": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Wait for new chat messages without repeated snapshots",
+        "description": "Select incoming message elements with messageSelector. First call establishes a baseline; timeout 0 returns a cursor immediately. Reuse cursor and selectors to receive only new messages, including those arriving between calls. Optional typingSelector reports typing, not_typing, or unknown. The wait protects the tab, settles streaming text, and supports cancellation through connection closure. Maximum 55 seconds per call; repeat with the returned cursor for longer waits.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "messageSelector"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "messageSelector": {
+                    "type": "string"
+                  },
+                  "typingSelector": {
+                    "type": "string"
+                  },
+                  "cursor": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "timeout": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 55000,
+                    "default": 45000
+                  },
+                  "quietMs": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 5000,
+                    "default": 700
+                  },
+                  "waitForTyping": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "New messages with cursor",
+            "typing state and completion reason.": null
+          },
+          "400": {
+            "description": "Invalid selectors or parameters."
+          },
+          "404": {
+            "description": "Tab not found."
+          },
+          "409": {
+            "description": "Another reply wait is active."
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/history": {
+      "get": {
+        "tags": [
+          "Tabs"
+        ],
+        "summary": "Read a closed tab's locally saved recovery information",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved URL",
+            "closure reason and last explicitly read text.": null
+          },
+          "400": {
+            "description": "Missing userId."
+          },
+          "404": {
+            "description": "No saved history."
           }
         }
       }
@@ -3067,7 +3238,7 @@
           "Browser"
         ],
         "summary": "Get dashboard browser state",
-        "description": "Returns all active sessions and tabs for the local container dashboard. This route is protected by the global access key when configured.",
+        "description": "Returns active sessions with per-tab lifetime and navigation errors, plus persistent closedTabs metadata (without saved text). This route is protected by the global access key when configured.",
         "responses": {
           "200": {
             "description": "Current browser, session, and tab state.",
@@ -3082,6 +3253,36 @@
                     "generatedAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "closedTabs": {
+                      "type": "array",
+                      "description": "Locally saved closed-tab metadata, without text.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "tabId": {
+                            "type": "string"
+                          },
+                          "sessionKey": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "closedAt": {
+                            "type": "number"
+                          }
+                        }
+                      }
                     },
                     "sessions": {
                       "type": "array",
@@ -3111,6 +3312,28 @@
                                 },
                                 "title": {
                                   "type": "string"
+                                },
+                                "navigationError": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "lifetime": {
+                                  "type": "object",
+                                  "properties": {
+                                    "keepOpen": {
+                                      "type": "boolean"
+                                    },
+                                    "protected": {
+                                      "type": "boolean"
+                                    },
+                                    "expiresAt": {
+                                      "type": "number",
+                                      "nullable": true
+                                    },
+                                    "idleTimeoutMs": {
+                                      "type": "number"
+                                    }
+                                  }
                                 }
                               }
                             }

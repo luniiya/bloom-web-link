@@ -55,7 +55,7 @@ function createProtocolServer(config: ContainerConfig, userId: string): Server {
     })),
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
     if (!TOOL_DEFS.some((tool: any) => tool.name === name)) {
       return { isError: true, content: [{ type: "text", text: `Unknown tool: ${name}` }] };
@@ -66,7 +66,7 @@ function createProtocolServer(config: ContainerConfig, userId: string): Server {
         args || {},
         { userId, sessionKey: "default" },
         baseUrl,
-        toolConfig,
+        { ...toolConfig, signal: extra.signal },
       );
       return { content: adaptResponse(spec, payload) };
     } catch (error) {

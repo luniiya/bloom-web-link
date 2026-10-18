@@ -88,8 +88,8 @@ afterEach(() => {
 
 // --- Schema sanity ----------------------------------------------------------
 describe('TOOL_DEFS', () => {
-  test('exposes exactly 17 tools', () => {
-    expect(TOOL_DEFS).toHaveLength(17);
+  test('exposes exactly 20 tools', () => {
+    expect(TOOL_DEFS).toHaveLength(20);
   });
 
   test('every def has a unique name and a valid JSON-Schema object', () => {
@@ -355,4 +355,29 @@ describe('host equivalence', () => {
       }
     }
   });
+});
+
+describe('chat reliability tool contracts', () => {
+  test('reply waiting forwards selectors, typing and cursor without screenshot data', () => {
+    const spec = buildRequest('bwl_wait_for_reply', { tabId: 't1', messageSelector: '.incoming', typingSelector: '.typing', cursor: 7, timeout: 45000 }, CTX);
+    expect(spec).toMatchObject({ method: 'POST', path: '/tabs/t1/wait-reply', body: { userId: 'u1', messageSelector: '.incoming', typingSelector: '.typing', cursor: 7, timeout: 45000 }, meta: { pageContent: true } });
+  });
+  test('keep-open defaults to true and supports explicit unpinning', () => {
+    expect(buildRequest('bwl_keep_open', { tabId: 't1' }, CTX).body).toEqual({ userId: 'u1', keepOpen: true });
+    expect(buildRequest('bwl_keep_open', { tabId: 't1', keepOpen: false }, CTX).body.keepOpen).toBe(false);
+  });
+  test('recovery text is isolated by user and marked as untrusted page content', () => {
+    expect(buildRequest('bwl_tab_history', { tabId: 't1' }, CTX)).toMatchObject({ path: '/tabs/t1/history?userId=u1', meta: { pageContent: true } });
+  });
+  test('passes MCP cancellation into the HTTP request', async () => {
+    const controller = new AbortController(); let signal;
+    globalThis.fetch = async (_, init) => { signal = init.signal; return makeResponse({ body: { ok: true } }); };
+    await fetchSpec(BASE, buildRequest('bwl_keep_open', { tabId: 't1' }, CTX), cfg({ signal: controller.signal }));
+    expect(signal).toBe(controller.signal);
+  });
+});
+
+test('create_tab supports blank tabs without rejecting the about scheme', () => {
+  expect(buildRequest('bwl_create_tab', {}, CTX).body.url).toBeUndefined();
+  expect(buildRequest('bwl_create_tab', { url: 'about:blank' }, CTX).body.url).toBeUndefined();
 });

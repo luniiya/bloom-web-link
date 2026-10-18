@@ -75,9 +75,9 @@ export const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: 'Initial URL to navigate to' },
+        url: { type: 'string', description: 'Optional initial HTTP(S) URL; omit or use about:blank for a blank tab' },
       },
-      required: ['url'],
+      required: [],
     },
   },
   {
@@ -171,6 +171,29 @@ export const TOOL_DEFS = [
       },
       required: ['tabId'],
     },
+  },
+  {
+    name: 'bwl_wait_for_reply',
+    description: 'Wait for new incoming chat messages without screenshots or repeated full transcripts. Supply a CSS messageSelector matching individual incoming messages and optionally a typingSelector. First call establishes a baseline; timeout:0 returns its cursor immediately. Reuse the cursor and selectors on every following call so replies between calls are not missed. Waits up to 55s, protects the tab, and reports typing/not_typing/unknown. Repeat with the returned cursor for longer waits.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'string' }, messageSelector: { type: 'string' }, typingSelector: { type: 'string' },
+        cursor: { type: 'integer', minimum: 0 }, timeout: { type: 'number', minimum: 0, maximum: 55000 },
+        quietMs: { type: 'number', minimum: 0, maximum: 5000 }, waitForTyping: { type: 'boolean' },
+      },
+      required: ['tabId', 'messageSelector'],
+    },
+  },
+  {
+    name: 'bwl_keep_open',
+    description: 'Protect a tab from automatic idle cleanup, recycling and navigation-session recovery. keepOpen defaults to true; set false to allow normal cleanup again. Explicit close still works.',
+    inputSchema: { type: 'object', properties: { tabId: { type: 'string' }, keepOpen: { type: 'boolean' } }, required: ['tabId'] },
+  },
+  {
+    name: 'bwl_tab_history',
+    description: 'Read locally saved URL, closure reason and previously read text for a closed tab. Saved information may help reopen the page but does not guarantee live-chat recovery.',
+    inputSchema: { type: 'object', properties: { tabId: { type: 'string' } }, required: ['tabId'] },
   },
   {
     name: 'bwl_mouse',
@@ -446,7 +469,7 @@ export function buildRequest(name, args, ctx) {
         path: '/tabs',
         auth: 'accessKey',
         responseKind: 'json',
-        body: { url: args.url, userId, sessionKey },
+        body: { url: args.url === 'about:blank' ? undefined : args.url, userId, sessionKey },
       };
     case 'bwl_snapshot': {
       const params = new URLSearchParams({ userId, includeScreenshot: args.includeScreenshot === false ? 'false' : 'true' });
@@ -470,6 +493,12 @@ export function buildRequest(name, args, ctx) {
         meta: { pageContent: true },
       };
     }
+    case 'bwl_wait_for_reply':
+      return { method: 'POST', path: `/tabs/${args.tabId}/wait-reply`, auth: 'accessKey', responseKind: 'json', body: { ...without(args), userId }, meta: { pageContent: true } };
+    case 'bwl_keep_open':
+      return { method: 'POST', path: `/tabs/${args.tabId}/lifetime`, auth: 'accessKey', responseKind: 'json', body: { userId, keepOpen: args.keepOpen ?? true } };
+    case 'bwl_tab_history':
+      return { method: 'GET', path: `/tabs/${args.tabId}/history?${new URLSearchParams({ userId })}`, auth: 'accessKey', responseKind: 'json', meta: { pageContent: true } };
     case 'bwl_click':
       return {
         method: 'POST',
@@ -616,7 +645,7 @@ export async function buildCookieRequest(args, ctx, config) {
 /**
  * Resolve which bearer token a request needs, given server config.
  * @param {RequestSpec} spec
- * @param {{accessKey?: string, apiKey?: string}} config
+ * @param {{accessKey?: string, apiKey?: string, signal?: AbortSignal}} config
  * @returns {{header?: {Authorization: string}, missing?: string}}
  */
 export function authHeaders(spec, config) {
@@ -638,7 +667,7 @@ export function authHeaders(spec, config) {
  *
  * @param {string} baseUrl - REST server origin (e.g. http://localhost:9377).
  * @param {RequestSpec} spec
- * @param {{accessKey?: string, apiKey?: string}} config
+ * @param {{accessKey?: string, apiKey?: string, signal?: AbortSignal}} config
  * @returns {Promise<unknown>} JSON value, or an image content block for image specs.
  * @throws {Error} on non-2xx, or when an image route returns non-image bytes.
  */
@@ -651,6 +680,7 @@ export async function fetchSpec(baseUrl, spec, config) {
     method: spec.method,
     headers,
     body: spec.body ? JSON.stringify(spec.body) : undefined,
+    signal: config.signal,
   });
   if (!res.ok) {
     const text = await res.text();
@@ -686,7 +716,7 @@ export async function fetchSpec(baseUrl, spec, config) {
  * @param {Record<string, unknown>} args - Tool arguments.
  * @param {CallContext} ctx - { userId, sessionKey }.
  * @param {string} baseUrl - REST server origin.
- * @param {{apiKey?: string, accessKey?: string, cookiesDir: string}} config - server config.
+ * @param {{apiKey?: string, accessKey?: string, cookiesDir: string, signal?: AbortSignal}} config - server config.
  * @returns {Promise<{spec: RequestSpec, payload: unknown}>}
  */
 export async function runTool(name, args, ctx, baseUrl, config) {

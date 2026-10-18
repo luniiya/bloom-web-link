@@ -1,3 +1,4 @@
+import { selectedText } from "./clipboard.ts";
 import type { ContainerConfig } from "../config.ts";
 import { internalHeaders, isAuthorized, json, unauthorized } from "../http.ts";
 
@@ -29,6 +30,21 @@ export async function startWebUi(config: ContainerConfig): Promise<Bun.Server> {
       if (url.pathname === "/api/config") return json({ authRequired: !!config.publicAccessKey });
       if (url.pathname.startsWith("/api/") && !isAuthorized(request, config)) return unauthorized();
       if (url.pathname === "/api/state") return coreFetch(config, "/dashboard/state");
+      if (url.pathname === "/api/lifetime" && request.method === "POST") {
+        const input = await request.json() as { userId?: string; tabId?: string; keepOpen?: boolean; viewing?: boolean };
+        if (!input.userId || !input.tabId || (input.keepOpen !== undefined && typeof input.keepOpen !== "boolean") || (input.viewing !== undefined && typeof input.viewing !== "boolean")) return json({ error: "userId and tabId required; keepOpen and viewing must be booleans" }, 400);
+        return coreFetch(config, `/tabs/${encodeURIComponent(input.tabId)}/lifetime`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: input.userId, keepOpen: input.keepOpen, viewing: input.viewing }) });
+      }
+      if (url.pathname === "/api/history") {
+        const userId = url.searchParams.get("userId"); const tabId = url.searchParams.get("tabId");
+        if (!userId || !tabId) return json({ error: "userId and tabId required" }, 400);
+        return coreFetch(config, `/tabs/${encodeURIComponent(tabId)}/history?${new URLSearchParams({ userId })}`);
+      }
+      if (url.pathname === "/api/reopen" && request.method === "POST") {
+        const input = await request.json() as { userId?: string; url?: string; sessionKey?: string };
+        if (!input.userId || !input.url || !/^https?:\/\//i.test(input.url)) return json({ error: "userId and an http(s) URL required" }, 400);
+        return coreFetch(config, "/tabs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: input.userId, sessionKey: input.sessionKey || "default", url: input.url }) });
+      }
       if (url.pathname === "/api/activity") {
         const tabId = url.searchParams.get("tabId") || "";
         if (!tabId) return json({ error: "tabId is required" }, 400);
@@ -51,6 +67,18 @@ export async function startWebUi(config: ContainerConfig): Promise<Bun.Server> {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: input.userId, coordinates: { x: input.x, y: input.y } }),
         });
+      }
+      if (url.pathname === "/api/clipboard" && request.method === "POST") {
+        const input = await request.json() as { userId?: string; tabId?: string };
+        if (!input.userId || !input.tabId) return json({ error: "userId and tabId are required" }, 400);
+        const response = await coreFetch(config, `/tabs/${encodeURIComponent(input.tabId)}/evaluate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: input.userId, expression: selectedText.toString() }),
+        });
+        if (!response.ok) return response;
+        const data = await response.json() as { result?: unknown };
+        return json({ text: typeof data.result === "string" ? data.result : "" });
       }
       if (url.pathname === "/api/keyboard" && request.method === "POST") {
         // Keyboard input from the detail view: `text` types into whatever the

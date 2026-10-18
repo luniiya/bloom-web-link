@@ -12,6 +12,9 @@ services:
       BWL_ACCESS_KEY: ${BWL_ACCESS_KEY:-}
       BWL_API_KEY: ${BWL_API_KEY:-}
       BWL_ADMIN_KEY: ${BWL_ADMIN_KEY:-}
+      # Local interactive browsing must survive ordinary pauses and compaction.
+      SESSION_TIMEOUT_MS: ${SESSION_TIMEOUT_MS:-0}
+      TAB_INACTIVITY_MS: ${TAB_INACTIVITY_MS:-0}
       BWL_CRASH_REPORT_ENABLED: ${BWL_CRASH_REPORT_ENABLED:-false}
     volumes:
       - bwl-data:/root/.bwl

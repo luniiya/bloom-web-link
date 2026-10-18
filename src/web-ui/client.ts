@@ -1,9 +1,11 @@
-type Tab = { tabId: string; sessionKey: string; url: string; title: string };
+import { lifetimeLabel, closureLabel, type Lifetime } from "./lifetime.ts";
+type Tab = { tabId: string; sessionKey: string; url: string; title: string; lifetime?: Lifetime; navigationError?: string };
+type ClosedRecord = Tab & { userId: string; closedAt: number; reason: string };
 type Session = { userId: string; lastAccess: string; tabs: Tab[] };
-type State = { running: boolean; generatedAt: string; sessions: Session[] };
+type State = { running: boolean; generatedAt: string; sessions: Session[]; closedTabs?: ClosedRecord[] };
 type TabRef = { session: Session; tab: Tab };
 
-import { keyToPress } from "./keys.ts";
+import { keyToPress, isPasteShortcut, isCopyShortcut } from "./keys.ts";
 import { formatActivity, mergeActivity, type ActivityEntry } from "./activity.ts";
 
 export {};
@@ -24,6 +26,14 @@ const detailTitle = document.querySelector<HTMLElement>("#detail-title")!;
 const detailUrl = document.querySelector<HTMLElement>("#detail-url")!;
 const detailSession = document.querySelector<HTMLElement>("#detail-session")!;
 const detailUser = document.querySelector<HTMLElement>("#detail-user")!;
+const fullscreenButton = document.querySelector<HTMLButtonElement>("#fullscreen-button")!;
+const keepOpenButton = document.querySelector<HTMLButtonElement>("#keep-open-button")!;
+const lifetimeStatus = document.querySelector<HTMLElement>("#lifetime-status")!;
+const navigationError = document.querySelector<HTMLElement>("#navigation-error")!;
+const reopenButton = document.querySelector<HTMLButtonElement>("#reopen-button")!;
+const saveTranscriptButton = document.querySelector<HTMLButtonElement>("#save-transcript-button")!;
+const closureReason = document.querySelector<HTMLElement>("#closure-reason")!;
+const tabDetail = document.querySelector<HTMLElement>("#tab-detail")!;
 const detailScreen = document.querySelector<HTMLButtonElement>("#detail-screen")!;
 const detailImg = document.querySelector<HTMLImageElement>("#detail-img")!;
 const detailMissing = document.querySelector<HTMLElement>("#detail-missing")!;
@@ -49,7 +59,7 @@ const lastFetchedAt = new Map<string, number>();
 // just vanishing, so "Closed" has something to show. Session-local only —
 // resets on page reload.
 const MAX_CLOSED = 40;
-type ClosedEntry = TabRef & { closedAt: number };
+type ClosedEntry = TabRef & { closedAt: number; reason?: string };
 const closedTabs = new Map<string, ClosedEntry>();
 let previousOpen = new Map<string, TabRef>();
 
@@ -104,14 +114,15 @@ backButton.addEventListener("click", () => {
 
 async function loadScreenshot(image: HTMLImageElement, screen: HTMLElement, userId: string, tabId: string) {
   const query = new URLSearchParams({ userId, tabId });
-  const response = await fetch(`/api/screenshot?${query}`, { headers: authHeaders() });
-  if (!response.ok) return;
+  const response = await fetch(`/api/screenshot?${query}`, { headers: authHeaders(), signal: AbortSignal.timeout(15000) });
+  if (!response.ok) throw new Error(`View unavailable (${response.status}). Retry or reopen the tab.`);
   const blobUrl = URL.createObjectURL(await response.blob());
   const previous = imageUrls.get(tabId);
   if (previous) URL.revokeObjectURL(previous);
   imageUrls.set(tabId, blobUrl);
   image.src = blobUrl;
   screen.classList.add("ready");
+  screen.querySelector(".loading")!.textContent = "Loading view…";
   lastFetchedAt.set(tabId, Date.now());
 }
 
@@ -131,6 +142,7 @@ function pumpScreenshots() {
  * THUMB_REFRESH_MS (cached stills); pass force for the detail view's live feed.
  */
 function queueScreenshot(image: HTMLImageElement, screen: HTMLElement, userId: string, tabId: string, force = false) {
+  if (document.visibilityState === "hidden") return;
   if (!force) {
     const last = lastFetchedAt.get(tabId) ?? 0;
     if (Date.now() - last < THUMB_REFRESH_MS) return;
@@ -140,6 +152,7 @@ function queueScreenshot(image: HTMLImageElement, screen: HTMLElement, userId: s
   queuedScreenshots.add(key);
   screenshotQueue.push(async () => {
     try { await loadScreenshot(image, screen, userId, tabId); }
+    catch (error) { const loading = screen.querySelector(".loading"); if (loading) loading.textContent = error instanceof Error ? error.message : "View disconnected. Retrying…"; }
     finally { queuedScreenshots.delete(key); }
   });
   pumpScreenshots();
@@ -171,12 +184,16 @@ function createCard(session: Session, tab: Tab, closed: boolean): HTMLElement {
 
 /** Move tabs that dropped out of the live state into closedTabs, keeping their last known data. */
 function trackClosures(state: State) {
+  for (const record of state.closedTabs || []) {
+    const key = `${record.userId}:${record.tabId}`;
+    closedTabs.set(key, { session: { userId: record.userId, lastAccess: new Date(record.closedAt).toISOString(), tabs: [] }, tab: record, closedAt: record.closedAt, reason: record.reason });
+  }
   const openNow = new Map<string, TabRef>();
   for (const session of state.sessions) {
     for (const tab of session.tabs) openNow.set(`${session.userId}:${tab.tabId}`, { session, tab });
   }
   for (const [key, ref] of previousOpen) {
-    if (!openNow.has(key)) closedTabs.set(key, { ...ref, closedAt: Date.now() });
+    if (!openNow.has(key) && !closedTabs.has(key)) closedTabs.set(key, { ...ref, closedAt: Date.now() });
   }
   for (const key of openNow.keys()) closedTabs.delete(key);
   if (closedTabs.size > MAX_CLOSED) {
@@ -274,6 +291,12 @@ function renderDetail(state: State, userId: string, tabId: string) {
     // Closed: keep showing what it was (if this page saw it open) plus its log.
     const last = closedTabs.get(`${userId}:${tabId}`);
     detailMissing.hidden = false;
+    closureReason.textContent = closureLabel(last?.reason);
+    reopenButton.disabled = !last?.tab.url || !/^https?:\/\//i.test(last.tab.url);
+    saveTranscriptButton.disabled = !last;
+    keepOpenButton.hidden = true;
+    lifetimeStatus.textContent = "";
+    navigationError.hidden = true;
     detailScreen.hidden = true;
     detailTitle.textContent = last ? last.tab.title || "Untitled tab" : "";
     detailUrl.textContent = last?.tab.url ?? "";
@@ -282,6 +305,12 @@ function renderDetail(state: State, userId: string, tabId: string) {
     return;
   }
   detailMissing.hidden = true;
+  keepOpenButton.hidden = false;
+  keepOpenButton.setAttribute("aria-pressed", String(!!tab.lifetime?.keepOpen));
+  keepOpenButton.textContent = tab.lifetime?.keepOpen ? "Allow idle cleanup" : "Keep open";
+  lifetimeStatus.textContent = lifetimeLabel(tab.lifetime);
+  navigationError.hidden = !tab.navigationError;
+  navigationError.textContent = tab.navigationError ? "Page navigation failed. The tab is still open. " + tab.navigationError.split("\n")[0] : "";
   detailScreen.hidden = false;
   detailTitle.textContent = tab.title || "Untitled tab";
   detailUrl.textContent = tab.url;
@@ -315,6 +344,52 @@ function renderDetail(state: State, userId: string, tabId: string) {
   }
 }
 
+keepOpenButton.addEventListener("click", async () => {
+  const route = parseRoute(); if (route.kind !== "detail") return;
+  try {
+    const response = await fetch("/api/lifetime", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ userId: route.userId, tabId: route.tabId, keepOpen: keepOpenButton.getAttribute("aria-pressed") !== "true" }) });
+    if (!response.ok) throw new Error("Could not change tab protection");
+    await refresh();
+  } catch (error) { status.textContent = String(error); }
+});
+reopenButton.addEventListener("click", async () => {
+  const route = parseRoute(); if (route.kind !== "detail") return;
+  const saved = closedTabs.get(`${route.userId}:${route.tabId}`); if (!saved) return;
+  reopenButton.disabled = true;
+  try {
+    const response = await fetch("/api/reopen", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ userId: route.userId, sessionKey: saved.tab.sessionKey, url: saved.tab.url }), signal: AbortSignal.timeout(45000) });
+    const result = await response.json() as { tabId?: string; error?: string };
+    if (!response.ok || !result.tabId) throw new Error(result.error || "Could not reopen tab");
+    await refresh(); openTab(route.userId, result.tabId);
+  } catch (error) { closureReason.textContent = String(error); }
+  finally { reopenButton.disabled = false; }
+});
+saveTranscriptButton.addEventListener("click", async () => {
+  const route = parseRoute(); if (route.kind !== "detail") return;
+  try {
+    const response = await fetch(`/api/history?${new URLSearchParams({ userId: route.userId, tabId: route.tabId })}`, { headers: authHeaders() });
+    if (!response.ok) throw new Error("No saved text is available for this tab");
+    const saved = await response.json() as { url: string; text: string };
+    const url = URL.createObjectURL(new Blob([saved.url + "\n\n" + saved.text], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a"); link.href = url; link.download = `bwl-${route.tabId}.txt`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) { closureReason.textContent = String(error); }
+});
+
+fullscreenButton.addEventListener("click", async () => {
+  try {
+    if (document.fullscreenElement === tabDetail) await document.exitFullscreen();
+    else await tabDetail.requestFullscreen();
+    detailScreen.focus();
+  } catch {
+    status.textContent = "Fullscreen is unavailable in this browser.";
+  }
+});
+document.addEventListener("fullscreenchange", () => {
+  const active = document.fullscreenElement === tabDetail;
+  fullscreenButton.textContent = active ? "Exit fullscreen" : "Fullscreen";
+  fullscreenButton.setAttribute("aria-pressed", String(active));
+});
+
 // --- Keyboard: while the detail screen has focus, keystrokes go to the page. ---
 // Printable characters are batched briefly and typed into the page's focused
 // element; everything else (Enter, arrows, Ctrl/Cmd chords) is a key press.
@@ -347,6 +422,47 @@ function flushText() {
 
 detailScreen.addEventListener("keydown", (event) => {
   if (event.isComposing) return;
+  if (isCopyShortcut(event)) {
+    event.preventDefault();
+    flushText();
+    const route = parseRoute();
+    keyboardChain = keyboardChain.then(async () => {
+      if (route.kind !== "detail") return;
+      const response = await fetch("/api/clipboard", {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({ userId: route.userId, tabId: route.tabId }),
+      });
+      if (!response.ok) throw new Error("Copy failed");
+      const { text } = await response.json() as { text: string };
+      if (text) await navigator.clipboard.writeText(text);
+    }).catch(() => {
+      status.textContent = "Copy blocked: allow clipboard access for this dashboard, then try again.";
+    });
+    return;
+  }
+  if (isPasteShortcut(event)) {
+    // Read while this user gesture is active. The remote browser has a
+    // separate clipboard; forwarding Control+v cannot paste local text.
+    if (!navigator.clipboard?.readText) return; // allow native paste fallback
+    event.preventDefault();
+    flushText();
+    const clipboard = navigator.clipboard.readText();
+    const route = parseRoute();
+    keyboardChain = keyboardChain.then(async () => {
+      const text = await clipboard;
+      if (!text || route.kind !== "detail") return;
+      await fetch("/api/keyboard", {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({ userId: route.userId, tabId: route.tabId, text }),
+      });
+      queueScreenshot(detailImg, detailScreen, route.userId, route.tabId, true);
+    }).catch(() => {
+      status.textContent = "Paste blocked: allow clipboard access for this dashboard, then try again.";
+    });
+    return;
+  }
   event.preventDefault();
   const chord = event.ctrlKey || event.metaKey || event.altKey;
   const key = keyToPress(event);
@@ -372,6 +488,7 @@ detailScreen.addEventListener("paste", (event) => {
 
 function renderRoute() {
   if (!latestState) return;
+  trackClosures(latestState);
   const route = parseRoute();
   gridView.hidden = route.kind !== "grid";
   detailView.hidden = route.kind !== "detail";
@@ -385,7 +502,11 @@ async function refresh() {
   if (refreshing) return;
   refreshing = true;
   try {
-    const response = await fetch("/api/state", { headers: authHeaders() });
+    const route = parseRoute();
+    if (route.kind === "detail" && document.visibilityState !== "hidden") {
+      await fetch("/api/lifetime", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ userId: route.userId, tabId: route.tabId, viewing: true }), signal: AbortSignal.timeout(5000) }).catch(() => {});
+    }
+    const response = await fetch("/api/state", { headers: authHeaders(), signal: AbortSignal.timeout(10000) });
     if (response.status === 401) throw new Error("Access key required");
     if (!response.ok) throw new Error(`Dashboard unavailable (${response.status})`);
     latestState = await response.json() as State;

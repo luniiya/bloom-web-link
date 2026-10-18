@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { keyToPress, type KeyLike } from "../../src/web-ui/keys.ts";
+import { keyToPress, isPasteShortcut, isCopyShortcut, type KeyLike } from "../../src/web-ui/keys.ts";
 
 const key = (k: string, mods: Partial<KeyLike> = {}): KeyLike =>
   ({ key: k, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
@@ -32,4 +32,27 @@ describe("keyToPress", () => {
     expect(keyToPress(key("A", { shiftKey: true }))).toBe("A");
     expect(keyToPress(key("!", { shiftKey: true }))).toBe("!");
   });
+});
+
+describe("local clipboard shortcuts", () => {
+  test("recognizes Ctrl/Cmd+V, plain-text paste, and Shift+Insert", () => {
+    expect(isPasteShortcut(key("v", { ctrlKey: true }))).toBe(true);
+    expect(isPasteShortcut(key("v", { metaKey: true }))).toBe(true);
+    expect(isPasteShortcut(key("V", { ctrlKey: true, shiftKey: true }))).toBe(true);
+    expect(isPasteShortcut(key("Insert", { shiftKey: true }))).toBe(true);
+  });
+  test("leaves typing, copy, and other chords to the remote browser", () => {
+    expect(isPasteShortcut(key("v"))).toBe(false);
+    expect(isPasteShortcut(key("c", { ctrlKey: true }))).toBe(false);
+    expect(isPasteShortcut(key("v", { ctrlKey: true, altKey: true }))).toBe(false);
+    expect(isPasteShortcut(key("Insert", { ctrlKey: true }))).toBe(false);
+  });
+});
+
+test("copy shortcuts use the local clipboard", () => {
+  expect(isCopyShortcut(key("c", { ctrlKey: true }))).toBe(true);
+  expect(isCopyShortcut(key("c", { metaKey: true }))).toBe(true);
+  expect(isCopyShortcut(key("c"))).toBe(false);
+  expect(isCopyShortcut(key("C", { ctrlKey: true, shiftKey: true }))).toBe(false);
+  expect(isCopyShortcut(key("c", { ctrlKey: true, altKey: true }))).toBe(false);
 });

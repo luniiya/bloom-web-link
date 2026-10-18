@@ -14,7 +14,7 @@ const core = Bun.serve({
     const url = new URL(request.url);
     const text = request.method === "GET" ? "" : await request.text();
     seen.push({ method: request.method, path: url.pathname + url.search, headers: request.headers, body: text ? JSON.parse(text) : null });
-    return Response.json({ ok: true, entries: [] });
+    return Response.json({ ok: true, entries: [], result: "selected sample" });
   },
 });
 
@@ -102,5 +102,40 @@ describe("auth", () => {
   test("config and the page itself stay public", async () => {
     expect(await (await fetch(url(secured, "/api/config"))).json()).toEqual({ authRequired: true });
     expect((await fetch(url(secured, "/"))).status).toBe(200);
+  });
+});
+
+describe("/api/clipboard", () => {
+  test("returns selected text from the targeted remote page", async () => {
+    const response = await post(open, "/api/clipboard", { userId: "u1", tabId: "t/1" });
+    expect(await response.json()).toEqual({ text: "selected sample" });
+    expect(lastSeen()).toMatchObject({ method: "POST", path: "/tabs/t%2F1/evaluate" });
+    expect((lastSeen().body as { userId: string }).userId).toBe("u1");
+  });
+  test("requires a target and authorization", async () => {
+    expect((await post(open, "/api/clipboard", { userId: "u1" })).status).toBe(400);
+    expect((await post(secured, "/api/clipboard", { userId: "u1", tabId: "t1" })).status).toBe(401);
+  });
+});
+
+describe('tab protection and recovery', () => {
+  test('forwards viewing lease and pin controls with dashboard auth', async () => {
+    const response = await post(open, '/api/lifetime', { userId: 'u1', tabId: 't1', keepOpen: true, viewing: true });
+    expect(response.status).toBe(200);
+    expect(lastSeen()).toMatchObject({ method: 'POST', path: '/tabs/t1/lifetime', body: { userId: 'u1', keepOpen: true, viewing: true } });
+    expect(lastSeen().headers.get('authorization')).toBe('Bearer internal-test');
+  });
+  test('rejects malformed or unauthorized protection requests', async () => {
+    expect((await post(open, '/api/lifetime', { userId: 'u1', tabId: 't1', keepOpen: 'yes' })).status).toBe(400);
+    expect((await post(secured, '/api/lifetime', { userId: 'u1', tabId: 't1', keepOpen: true })).status).toBe(401);
+  });
+  test('reopens saved HTTP URLs and rejects non-navigation schemes', async () => {
+    expect((await post(open, '/api/reopen', { userId: 'u1', url: 'https://example.test/chat', sessionKey: 'chat' })).status).toBe(200);
+    expect(lastSeen()).toMatchObject({ method: 'POST', path: '/tabs', body: { userId: 'u1', url: 'https://example.test/chat', sessionKey: 'chat' } });
+    expect((await post(open, '/api/reopen', { userId: 'u1', url: 'javascript:alert(1)' })).status).toBe(400);
+  });
+  test('reads recovery history for the selected user and tab', async () => {
+    await fetch(url(open, '/api/history?userId=u1&tabId=t1'));
+    expect(lastSeen()).toMatchObject({ method: 'GET', path: '/tabs/t1/history?userId=u1' });
   });
 });

@@ -23,7 +23,7 @@ async function proxyToCore(request: Request, config: ContainerConfig): Promise<R
   const body = request.method === "GET" || request.method === "HEAD"
     ? undefined
     : await request.arrayBuffer();
-  return fetch(target, { method: request.method, headers, body });
+  return fetch(target, { method: request.method, headers, body, signal: request.signal });
 }
 
 export function startGateway(config: ContainerConfig): Bun.Server {
@@ -31,6 +31,7 @@ export function startGateway(config: ContainerConfig): Bun.Server {
   return Bun.serve({
     hostname: config.host,
     port: config.mcpPort,
+    idleTimeout: 120,
     async fetch(request) {
       const url = new URL(request.url);
       if (url.pathname === "/mcp") return handleMcp(request);

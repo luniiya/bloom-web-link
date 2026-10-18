@@ -197,3 +197,16 @@ describe('loadConfig', () => {
   });
 
 });
+
+describe('tab idle timeout configuration', () => {
+  test('accepts zero so local interactive tabs do not expire', () => {
+    process.env.TAB_INACTIVITY_MS = '0';
+    expect(loadConfig().tabInactivityMs).toBe(0);
+  });
+  test('defaults to thirty minutes and accepts explicit positive timeouts', () => {
+    delete process.env.TAB_INACTIVITY_MS;
+    expect(loadConfig().tabInactivityMs).toBe(1800000);
+    process.env.TAB_INACTIVITY_MS = '120000';
+    expect(loadConfig().tabInactivityMs).toBe(120000);
+  });
+});

@@ -127,3 +127,45 @@ npm run test:mcp         # MCP adapter tests
 ## Credits
 
 bwl started as a fork of Jo Inc's Camoufox browser server and is built on [Camoufox](https://camoufox.com). MIT licensed; see [LICENSE](LICENSE).
+
+
+### Keeping interactive tabs safe
+
+The local Docker Compose setup disables automatic session and tab idle expiry by
+default (`SESSION_TIMEOUT_MS=0`, `TAB_INACTIVITY_MS=0`). Set positive milliseconds
+ to opt into idle cleanup. Outside Compose, tab idle cleanup defaults to 30 minutes and session expiry to 10 minutes; protected tabs bypass both timers.
+A tab being viewed in the dashboard receives a short renewable viewing lease.
+Use **Keep open**, or `bwl_keep_open({tabId})`, to protect it even when the dashboard
+is hidden. Explicit close still works. Automatic recycling, idle expiry and
+navigation recovery preserve protected tabs; browser crashes and forced restarts
+can still close them.
+
+### Waiting for chat replies
+
+`bwl_wait_for_reply` watches DOM mutations, returns only new messages, and protects
+the tab for the duration of the wait. Choose a CSS `messageSelector` matching each
+incoming message (not the whole transcript). Optionally provide a `typingSelector`
+matching the site's visible typing indicator. Without a selector, typing is
+reported as `unknown`; no indicator is guessed from elapsed time.
+
+1. Call with `timeout: 0` to establish a baseline and get a cursor **before sending**.
+2. Send your message, then call with the same selectors and cursor, up to 55 seconds.
+3. Reuse the returned cursor on subsequent waits, including after a timeout.
+
+Replies arriving between calls are returned too. A quiet period (default 700ms)
+settles streamed text, and the tool waits for the typing indicator to stop unless
+`waitForTyping` is false. Cancellation propagates from MCP to the browser watcher.
+Each tab supports one active reply wait. Selectors target the main document; framed
+chats currently need a main-document selector or a site-specific integration.
+
+### Recovering a closed tab
+
+The dashboard keeps a bounded, local history of closed URLs and closure reasons
+across reloads and restarts. **Reopen saved URL** opens a new tab using the saved
+login; the website decides whether an old live conversation can reconnect.
+**Save last read text** downloads content already read by a text/snapshot/reply tool.
+Cleanup does not scrape extra page content. The last 100 closed tabs and up to
+50,000 characters per tab are stored under the profile directory, not sent elsewhere.
+Agents can retrieve an entry with `bwl_tab_history({tabId})`.
+
+After idle cleanup closes the final session, BWL retires the empty browser runtime. The next request launches a fresh browser using saved login data. It rechecks for new sessions and in-progress session creation before retiring.

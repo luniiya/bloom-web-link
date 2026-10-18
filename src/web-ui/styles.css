@@ -157,3 +157,17 @@ code { color: var(--accent-text); }
   .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 
 }
+
+#fullscreen-button { border: 1px solid var(--border); border-radius: 8px; padding: 7px 11px; background: var(--surface-soft); cursor: pointer; }
+.tab-detail:fullscreen { max-width: none; width: 100vw; height: 100vh; border: 0; border-radius: 0; display: flex; flex-direction: column; }
+.tab-detail:fullscreen .tab-meta, .tab-detail:fullscreen .tab-footer { flex-shrink: 0; }
+.tab-detail:fullscreen .screen { flex: 1; min-height: 0; aspect-ratio: auto; }
+
+/* Author display rules must not override the hidden attribute. */
+[hidden] { display: none !important; }
+
+#keep-open-button, #reopen-button, #save-transcript-button { border: 1px solid var(--border); border-radius: 8px; padding: 7px 11px; margin: 4px; background: var(--surface-soft); color: var(--text); cursor: pointer; }
+#keep-open-button[aria-pressed="true"] { border-color: var(--accent-text); }
+#lifetime-status, #navigation-error { padding: 8px 16px; margin: 0; font-size: 13px; }
+#lifetime-status { color: var(--muted-strong); }
+#navigation-error { color: #e5484d; }

@@ -2,6 +2,7 @@ declare namespace Bun {
   interface ServeOptions {
     hostname?: string;
     port: number;
+    idleTimeout?: number;
     fetch(request: Request): Response | Promise<Response>;
     error?(error: Error): Response | Promise<Response>;
   }

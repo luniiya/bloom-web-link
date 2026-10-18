@@ -23,6 +23,13 @@ const EXPECTED_TOOLS = [
   'bwl_evaluate',
   'bwl_list_tabs',
   'bwl_import_cookies',
+  'bwl_read_text',
+  'bwl_select',
+  'bwl_element_state',
+  'bwl_batch',
+  'bwl_wait_for_reply',
+  'bwl_keep_open',
+  'bwl_tab_history',
 ];
 
 let failures = 0;
@@ -60,7 +67,7 @@ async function main() {
 
     const { tools } = await client.listTools();
     const names = tools.map(tool => tool.name).sort();
-    check('lists exactly 13 tools', tools.length === 13, `got ${tools.length}`);
+    check('lists the expected tools', tools.length === EXPECTED_TOOLS.length, `got ${tools.length}`);
     check('tool names match expected', names.join(',') === [...EXPECTED_TOOLS].sort().join(','), `got: ${names.join(',')}`);
 
     for (const tool of tools) {

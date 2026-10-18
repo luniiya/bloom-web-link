@@ -16,6 +16,15 @@ describe("index.html", () => {
     expect(html).toMatch(/<div id="detail-missing"[^>]*\bhidden\b[^>]*>\s*<h2>Tab closed<\/h2>/);
   });
 
+  test("fullscreen control is inside the fullscreen tab", () => {
+    expect(html).toMatch(/<article id="tab-detail"[\s\S]*id="fullscreen-button"[\s\S]*<\/article>/);
+    expect(read("styles.css")).toContain(".tab-detail:fullscreen .screen");
+  });
+
+  test("hidden views stay hidden despite author display rules", () => {
+    expect(read("styles.css")).toMatch(/\[hidden\]\s*\{\s*display:\s*none\s*!important/);
+  });
+
   test("has the activity log panel", () => {
     expect(html).toContain('id="activity-list"');
     expect(html).toContain('id="activity-empty"');

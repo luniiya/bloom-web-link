@@ -89,3 +89,11 @@ describe('createPageWithSessionRecovery', () => {
     expect(destroySession).not.toHaveBeenCalled();
   });
 });
+
+test('new-page timeout cannot replace a session containing a protected chat', async () => {
+  const error = Object.assign(new Error('new page timed out'), { code: 'timeout' });
+  const session = { context: { newPage: jest.fn().mockRejectedValue(error) } };
+  const destroySession = jest.fn();
+  await expect(createPageWithSessionRecovery(recoveryOptions({ session, currentSession: () => session, destroySession, getSession: jest.fn(), canRecoverSession: () => false }))).rejects.toBe(error);
+  expect(destroySession).not.toHaveBeenCalled();
+});

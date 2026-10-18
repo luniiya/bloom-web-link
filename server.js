@@ -1,3 +1,7 @@
+import { tabProtected, sessionProtected, tabLifetime, shouldRecoverSession, finishIdleSession } from './lib/tab-lifetime.js';
+import { createTabHistory } from './lib/tab-history.js';
+import { createReplyWaitHandler } from './lib/reply-handler.js';
+import path from 'node:path';
 import { Camoufox, launchOptions } from 'camoufox-js';
 import { VirtualDisplay } from 'camoufox-js/dist/virtdisplay.js';
 import { firefox } from 'playwright-core';
@@ -66,6 +70,11 @@ import {
 } from './lib/browser-errors.js';
 
 const CONFIG = loadConfig();
+const tabHistory = createTabHistory(path.join(CONFIG.profileDir, 'tab-history.json'));
+function rememberClosed(userId, tabId, tab, reason, sessionKey) {
+  try { tabHistory.record(normalizeUserId(userId), tabId, tab, reason, sessionKey); }
+  catch (err) { log('warn', 'tab history save failed', { error: err.message }); }
+}
 
 // --- Crash reporter (opt-in, anonymized GitHub issues) ---
 import { readFileSync } from 'fs';
@@ -843,6 +852,10 @@ function recordNavFailure(userId) {
 
 async function recoverUserSession(userId, reason) {
   const key = normalizeUserId(userId);
+  if (!shouldRecoverSession(proxyPool?.canRotateSessions, sessions.get(key) || { tabGroups: new Map() }, Date.now(), tabLocks)) {
+    log('warn', 'navigation failed; preserving session', { userId: key, reason });
+    return false;
+  }
   log('warn', 'recovering user session after nav failure threshold', {
     userId: key, reason, failures: getUserNavHealth(key).consecutiveNavFailures,
   });
@@ -1347,6 +1360,9 @@ async function closeSession(userId, session, {
   if (!session) return;
 
   const key = normalizeUserId(userId);
+  for (const [sessionKey, group] of session.tabGroups) {
+    for (const [id, tab] of group) rememberClosed(key, id, tab, reason, sessionKey);
+  }
 
   // Drain locks BEFORE closing context — queued operations get clean "Tab destroyed"
   // (410) instead of messy "Target page closed" (500) errors.
@@ -1369,7 +1385,7 @@ async function closeSession(userId, session, {
   }
 
   await session.context.close().catch(() => {});
-  sessions.delete(key);
+  if (sessions.get(key) === session) sessions.delete(key);
   await pluginEvents.emitAsync('session:destroyed', { userId: key, reason });
 
   refreshActiveTabsGauge();
@@ -1508,6 +1524,7 @@ async function createPageWithRecoveryForUser(userId, session, { trace = false } 
     isTimeoutError,
     isDeadContextError,
     currentSession: () => sessions.get(key),
+    canRecoverSession: candidate => !sessionProtected(candidate, Date.now(), tabLocks),
     destroySession,
     getSession,
     log,
@@ -1576,7 +1593,7 @@ function handleRouteError(err, req, res, extraFields = {}) {
   }
   // Proxy errors mean the session is dead -- rotate at context level.
   // Destroy the user's session so the next request gets a fresh context with a new proxy.
-  if (isProxyError(err) && proxyPool?.canRotateSessions && userId) {
+  if (isProxyError(err) && userId && shouldRecoverSession(proxyPool?.canRotateSessions, sessions.get(normalizeUserId(userId)) || { tabGroups: new Map() }, Date.now(), tabLocks)) {
     log('warn', 'proxy error detected, destroying user session for fresh proxy on next request', {
       action, userId, error: err.message,
     });
@@ -1604,7 +1621,7 @@ function handleRouteError(err, req, res, extraFields = {}) {
   const NAVIGATION_TIMEOUT_ACTIONS = new Set(['click', 'navigate', 'open_url']);
   const isNavigationTimeout =
     isTimeoutError(err) && err.code !== 'tab_timeout' && userId && NAVIGATION_TIMEOUT_ACTIONS.has(action);
-  if (isNavigationTimeout && proxyPool?.canRotateSessions) {
+  if (isNavigationTimeout && shouldRecoverSession(proxyPool?.canRotateSessions, sessions.get(normalizeUserId(userId)) || { tabGroups: new Map() }, Date.now(), tabLocks)) {
     log('warn', 'navigation timeout — destroying session for fresh proxy', {
       action, userId, error: err.message,
     });
@@ -1701,6 +1718,7 @@ function destroyTab(session, tabId, reason, userId) {
   for (const [listItemId, group] of session.tabGroups) {
     if (group.has(tabId)) {
       const tabState = group.get(tabId);
+      rememberClosed(userId, tabId, tabState, reason || 'unknown', listItemId);
       log('warn', 'destroying stuck tab', { tabId, listItemId, toolCalls: tabState.toolCalls, reason: reason || 'unknown' });
       safePageClose(tabState.page);
       group.delete(tabId);
@@ -1718,6 +1736,7 @@ async function destroyTimedOutTab(session, tabId, reason, userId) {
   const found = session && findTab(session, tabId);
   if (!found) return;
   const { tabState, group, listItemId } = found;
+  rememberClosed(userId, tabId, tabState, reason, listItemId);
   log('warn', 'destroying timed-out tab', { tabId, listItemId, toolCalls: tabState.toolCalls, reason });
   try {
     await safePageClose(tabState.page);
@@ -1751,6 +1770,7 @@ async function recycleOldestTab(session, reqId, userId) {
   let oldestTabId = null;
   for (const [gKey, group] of session.tabGroups) {
     for (const [tid, ts] of group) {
+      if (tabProtected(ts, Date.now(), tabLocks.get(tid))) continue;
       if (!oldestTab || ts.toolCalls < oldestTab.toolCalls) {
         oldestTab = ts;
         oldestGroup = group;
@@ -1761,6 +1781,7 @@ async function recycleOldestTab(session, reqId, userId) {
   }
   if (!oldestTab) return null;
 
+  rememberClosed(userId, oldestTabId, oldestTab, 'tab_recycled', oldestGroupKey);
   await safePageClose(oldestTab.page);
   oldestGroup.delete(oldestTabId);
   if (oldestGroup.size === 0) session.tabGroups.delete(oldestGroupKey);
@@ -1799,6 +1820,9 @@ function findTab(session, tabId) {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function tabNotFoundResponse(res, tabId) {
+  const userId = res.req?.body?.userId || res.req?.query?.userId;
+  const closed = userId && tabHistory.get(normalizeUserId(userId), tabId);
+  if (closed) return res.status(410).json({ error: `Tab closed: ${closed.reason}. Reopen its saved URL to try restoring the page.`, code: 'tab_closed', reason: closed.reason, url: closed.url });
   // Only return 410 for tabs that look like valid UUIDs (plausibly created by this server),
   // belonged to this machine, and were lost in a recent browser restart.
   // Random/invalid strings like 'non-existent-tab' always get 404.
@@ -1819,6 +1843,11 @@ function createTabState(page) {
   const healthTracker = createTabHealthTracker(page);
   const tabState = {
     page,
+    creating: false,
+    keepOpen: false,
+    viewedUntil: 0,
+    pendingReplyWaits: 0,
+    lastActivityAt: Date.now(),
     refs: new Map(),
     visitedUrls: new Set(),
     downloads: [],
@@ -1908,7 +1937,7 @@ async function bwlPressureCleanup(options = {}) {
     for (const [listItemId, group] of session.tabGroups) {
       for (const [tabId, tabState] of group) {
         const lockState = pressureLockState(tabId);
-        if (lockState.active || lockState.queued > 0) {
+        if (tabProtected(tabState, now, lockState)) {
           preserved.locked += 1;
           continue;
         }
@@ -1968,7 +1997,8 @@ async function bwlPressureCleanup(options = {}) {
       if (!item.group.has(item.tabId)) continue;
       if ((sessionTabCounts.get(item.userId) || 0) <= minTabsPerSession) continue;
       const lockState = pressureLockState(item.tabId);
-      if (lockState.active || lockState.queued > 0) continue;
+      if (tabProtected(item.tabState, Date.now(), lockState)) continue;
+      rememberClosed(item.userId, item.tabId, item.tabState, 'pressure_cleanup', item.listItemId);
       if (item.tabState.navigateAbort) item.tabState.navigateAbort.abort();
       await clearTabDownloads(item.tabState).catch(() => {});
       await safePageClose(item.tabState.page);
@@ -2918,7 +2948,7 @@ app.post('/pressure/cleanup', async (req, res) => {
  *   post:
  *     tags: [Tabs]
  *     summary: Create a new tab
- *     description: Creates a tab in the given session. Optionally navigates to an initial URL.
+ *     description: Creates a tab in the given session. Optionally navigates to an initial URL. A navigation timeout preserves the tab and returns navigationOk false with its tabId and navigation_timeout code.
  *     requestBody:
  *       required: true
  *       content:
@@ -3039,6 +3069,7 @@ app.post('/tabs', async (req, res) => {
       let tabState = createTabState(page);
       attachDownloadListener(tabState, tabId, log, pluginEvents, userId);
       group.set(tabId, tabState);
+      tabState.creating = true;
       pendingTab = { session, tabId };
       releasePageLease(session, lease);
       attachPopupHandler(page, userId, resolvedSessionKey);
@@ -3053,7 +3084,7 @@ app.post('/tabs', async (req, res) => {
           tabState.lastNavigationHttpStatus = typeof navigationResponse?.status === 'function' ? navigationResponse.status() : null;
           recordNavSuccess(userId);
         } catch (navErr) {
-          if ((isProxyError(navErr) || isTimeoutError(navErr)) && proxyPool?.canRotateSessions) {
+          if ((isProxyError(navErr) || isTimeoutError(navErr)) && shouldRecoverSession(proxyPool?.canRotateSessions, session, Date.now(), tabLocks)) {
             log('warn', 'tab create navigate failed, retrying with fresh proxy', {
               reqId: req.reqId, tabId, error: navErr.message,
             });
@@ -3070,6 +3101,7 @@ app.post('/tabs', async (req, res) => {
             tabState.lastRequestedUrl = url;
             attachDownloadListener(tabState, tabId, log, pluginEvents, userId);
             retryGroup.set(tabId, tabState);
+            tabState.creating = true;
             pendingTab = { session, tabId };
             releasePageLease(session, retryLease);
             attachPopupHandler(retryPage, userId, resolvedSessionKey);
@@ -3087,6 +3119,7 @@ app.post('/tabs', async (req, res) => {
         tabState.visitedUrls.add(url);
       }
       
+      tabState.creating = false;
       pendingTab = null;
       pluginEvents.emit('tab:created', { userId, tabId, page, url: page.url() });
       log('info', 'tab created', { reqId: req.reqId, tabId, userId, sessionKey: resolvedSessionKey, url: page.url() });
@@ -3104,6 +3137,12 @@ app.post('/tabs', async (req, res) => {
     if (pendingTab) {
       const { session, tabId } = pendingTab;
       pendingTab = null;
+      const found = findTab(session, tabId);
+      if (found) found.tabState.creating = false;
+      if (found && isTimeoutError(err)) {
+        found.tabState.navigationError = err.message;
+        return res.json({ tabId, url: safePageUrl(found.tabState.page), navigationOk: false, error: 'Navigation timed out. The tab was kept open; retry navigation.', code: 'navigation_timeout' });
+      }
       await destroyTimedOutTab(session, tabId, 'create_failed', req.body?.userId);
     }
     // SSL certificate errors on initial navigation — non-retriable
@@ -3208,6 +3247,7 @@ app.post('/tabs/:tabId/navigate', async (req, res) => {
     let session = sessions.get(normalizeUserId(userId));
     const found = session && findTab(session, tabId);
     if (!found) return tabNotFoundResponse(res, tabId);
+    found.tabState.navigationError = null;
     session.lastAccess = Date.now();
 
     const result = await withUserLimit(userId, () => withTimeout((async () => {
@@ -3451,7 +3491,7 @@ app.post('/tabs/:tabId/navigate', async (req, res) => {
           await navigateWithDeadPageRecovery();
           recordNavSuccess(userId);
         } catch (navErr) {
-          if ((isProxyError(navErr) || isTimeoutError(navErr)) && proxyPool?.canRotateSessions) {
+          if ((isProxyError(navErr) || isTimeoutError(navErr)) && shouldRecoverSession(proxyPool?.canRotateSessions, session, Date.now(), tabLocks)) {
             log('warn', 'navigate failed, retrying with fresh proxy session', {
               reqId: req.reqId, tabId, error: navErr.message,
             });
@@ -3549,6 +3589,9 @@ app.post('/tabs/:tabId/navigate', async (req, res) => {
     pluginEvents.emit('tab:navigated', { userId: req.body.userId, tabId, url: result.url, prevUrl: null });
     res.json(result);
   } catch (err) {
+    const failedSession = sessions.get(normalizeUserId(req.body?.userId));
+    const failedTab = failedSession && findTab(failedSession, tabId);
+    if (failedTab) failedTab.tabState.navigationError = err.message;
     log('error', 'navigate failed', { reqId: req.reqId, tabId, error: err.message });
     const is400 = err.message && (err.message.startsWith('Blocked URL scheme') || err.message === 'url or macro required');
     if (is400) {
@@ -3854,6 +3897,7 @@ app.get('/tabs/:tabId/text', async (req, res) => {
       return await tabState.page.evaluate(() => document.body?.innerText || '');
     })(), requestTimeoutMs(), 'text'));
 
+    tabState.lastReadText = text.slice(-50000);
     const win = windowSnapshot(text, offset);
     const response = {
       url: tabState.page.url(),
@@ -4091,6 +4135,98 @@ app.post('/tabs/:tabId/wait', async (req, res) => {
     log('error', 'wait failed', { reqId: req.reqId, error: err.message });
     handleRouteError(err, req, res);
   }
+});
+
+
+/**
+ * @openapi
+ * /tabs/{tabId}/lifetime:
+ *   post:
+ *     tags: [Tabs]
+ *     summary: Protect a tab from automatic cleanup
+ *     description: Keep open until explicitly unpinned, or renew a 20-second dashboard viewing lease. Does not navigate or read page content.
+ *     parameters:
+ *       - { name: tabId, in: path, required: true, schema: { type: string } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId]
+ *             properties:
+ *               userId: { type: string }
+ *               keepOpen: { type: boolean }
+ *               viewing: { type: boolean }
+ *     responses:
+ *       200: { description: Tab lifetime and protection status. }
+ *       400: { description: Invalid request. }
+ *       404: { description: Tab not found. }
+ */
+app.post('/tabs/:tabId/lifetime', (req, res) => {
+  const { userId, keepOpen, viewing } = req.body;
+  if (!userId || (keepOpen !== undefined && typeof keepOpen !== 'boolean') || (viewing !== undefined && typeof viewing !== 'boolean')) return res.status(400).json({ error: 'userId required; keepOpen and viewing must be booleans' });
+  const session = sessions.get(normalizeUserId(userId));
+  const found = session && findTab(session, req.params.tabId);
+  if (!found) return tabNotFoundResponse(res, req.params.tabId);
+  const tab = found.tabState;
+  if (keepOpen !== undefined) tab.keepOpen = keepOpen;
+  if (viewing) tab.viewedUntil = Date.now() + 20000;
+  tab.lastActivityAt = session.lastAccess = Date.now();
+  res.json({ ok: true, lifetime: tabLifetime(tab, TAB_INACTIVITY_MS, Date.now(), tabLocks.get(req.params.tabId)) });
+});
+
+/**
+ * @openapi
+ * /tabs/{tabId}/wait-reply:
+ *   post:
+ *     tags: [Content]
+ *     summary: Wait for new chat messages without repeated snapshots
+ *     description: Select incoming message elements with messageSelector. First call establishes a baseline; timeout 0 returns a cursor immediately. Reuse cursor and selectors to receive only new messages, including those arriving between calls. Optional typingSelector reports typing, not_typing, or unknown. The wait protects the tab, settles streaming text, and supports cancellation through connection closure. Maximum 55 seconds per call; repeat with the returned cursor for longer waits.
+ *     parameters:
+ *       - { name: tabId, in: path, required: true, schema: { type: string } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId, messageSelector]
+ *             properties:
+ *               userId: { type: string }
+ *               messageSelector: { type: string }
+ *               typingSelector: { type: string }
+ *               cursor: { type: integer, minimum: 0 }
+ *               timeout: { type: number, minimum: 0, maximum: 55000, default: 45000 }
+ *               quietMs: { type: number, minimum: 0, maximum: 5000, default: 700 }
+ *               waitForTyping: { type: boolean, default: true }
+ *     responses:
+ *       200: { description: New messages with cursor, typing state and completion reason. }
+ *       400: { description: Invalid selectors or parameters. }
+ *       404: { description: Tab not found. }
+ *       409: { description: Another reply wait is active. }
+ */
+app.post('/tabs/:tabId/wait-reply', createReplyWaitHandler({ sessions, normalizeUserId, findTab, tabNotFoundResponse, handleRouteError }));
+
+/**
+ * @openapi
+ * /tabs/{tabId}/history:
+ *   get:
+ *     tags: [Tabs]
+ *     summary: Read a closed tab's locally saved recovery information
+ *     parameters:
+ *       - { name: tabId, in: path, required: true, schema: { type: string } }
+ *       - { name: userId, in: query, required: true, schema: { type: string } }
+ *     responses:
+ *       200: { description: Saved URL, closure reason and last explicitly read text. }
+ *       400: { description: Missing userId. }
+ *       404: { description: No saved history. }
+ */
+app.get('/tabs/:tabId/history', (req, res) => {
+  if (!req.query.userId) return res.status(400).json({ error: 'userId required' });
+  const entry = tabHistory.get(normalizeUserId(req.query.userId), req.params.tabId);
+  if (!entry) return res.status(404).json({ error: 'No saved history for this tab' });
+  res.json(entry);
 });
 
 // Click
@@ -6405,6 +6541,7 @@ app.delete('/tabs/:tabId', async (req, res) => {
     const session = sessions.get(normalizeUserId(userId));
     const found = session && findTab(session, req.params.tabId);
     if (found) {
+      rememberClosed(userId, req.params.tabId, found.tabState, 'user_closed', found.listItemId);
       if (found.tabState.navigateAbort) found.tabState.navigateAbort.abort();
       await clearTabDownloads(found.tabState);
       await safePageClose(found.tabState.page);
@@ -6468,6 +6605,7 @@ app.delete('/tabs/group/:listItemId', async (req, res) => {
     const group = session?.tabGroups.get(req.params.listItemId);
     if (group) {
       for (const [tabId, tabState] of group) {
+        rememberClosed(userId, tabId, tabState, 'user_closed', req.params.listItemId);
         await clearTabDownloads(tabState);
         await safePageClose(tabState.page);
         const lock = tabLocks.get(tabId);
@@ -6756,12 +6894,12 @@ app.delete('/sessions/:userId', async (req, res) => {
 setInterval(() => {
   const now = Date.now();
   for (const [userId, session] of Array.from(sessions.entries())) {
-    if (SESSION_TIMEOUT_MS > 0 && now - session.lastAccess > SESSION_TIMEOUT_MS) {
+    if (SESSION_TIMEOUT_MS > 0 && now - session.lastAccess > SESSION_TIMEOUT_MS && !sessionProtected(session, now, tabLocks) && !hasActivePageLeases(session)) {
       session._closing = true;
       const idleMs = now - session.lastAccess;
       sessionsExpiredTotal.inc();
       pluginEvents.emit('session:expired', { userId, idleMs });
-      closeSession(userId, session, { reason: 'session_timeout', clearDownloads: true, clearLocks: true }).catch(() => {});
+      finishIdleSession(() => closeSession(userId, session, { reason: 'session_timeout', clearDownloads: true, clearLocks: true }), () => sessions.size === 0 && sessionCreations.size === 0 && !browserLaunchPromise, () => closeBrowserFully('idle_session_cleanup')).catch(() => {});
       log('info', 'session expired', { userId });
     }
   }
@@ -6789,7 +6927,7 @@ if (FLY_MACHINE_ID) {
       let oldestKey = null;
       let oldestAccess = Infinity;
       for (const [key, session] of sessions) {
-        if (session._closing || hasActivePageLeases(session)) continue;
+        if (session._closing || hasActivePageLeases(session) || sessionProtected(session, Date.now(), tabLocks)) continue;
         if (session.lastAccess < oldestAccess) {
           oldestAccess = session.lastAccess;
           oldestKey = key;
@@ -6824,25 +6962,17 @@ setInterval(() => {
   for (const [userId, session] of sessions) {
     for (const [listItemId, group] of session.tabGroups) {
       for (const [tabId, tabState] of group) {
-        if (!tabState._lastReaperCheck) {
-          tabState._lastReaperCheck = now;
-          tabState._lastReaperToolCalls = tabState.toolCalls;
-          continue;
-        }
-        if (tabState.toolCalls === tabState._lastReaperToolCalls) {
-          const idleMs = now - tabState._lastReaperCheck;
-          if (idleMs >= TAB_INACTIVITY_MS) {
-            tabsReapedTotal.inc();
-            log('info', 'tab reaped (inactive)', { userId, tabId, listItemId, idleMs, toolCalls: tabState.toolCalls });
-            safePageClose(tabState.page);
-            group.delete(tabId);
-            { const _l = tabLocks.get(tabId); if (_l) _l.drain(); tabLocks.delete(tabId); }
-            refreshTabLockQueueDepth();
-            refreshActiveTabsGauge();
-          }
-        } else {
-          tabState._lastReaperCheck = now;
-          tabState._lastReaperToolCalls = tabState.toolCalls;
+        const lifetime = tabLifetime(tabState, TAB_INACTIVITY_MS, now, tabLocks.get(tabId));
+        if (lifetime.expiresAt !== null && now >= lifetime.expiresAt) {
+          const idleMs = now - tabState.lastActivityAt;
+          tabsReapedTotal.inc();
+          rememberClosed(userId, tabId, tabState, 'idle_timeout', listItemId);
+          log('info', 'tab reaped (inactive)', { userId, tabId, listItemId, idleMs, toolCalls: tabState.toolCalls });
+          safePageClose(tabState.page);
+          group.delete(tabId);
+          { const lock = tabLocks.get(tabId); if (lock) lock.drain(); tabLocks.delete(tabId); }
+          refreshTabLockQueueDepth();
+          refreshActiveTabsGauge();
         }
       }
       if (group.size === 0) {
@@ -6853,7 +6983,7 @@ setInterval(() => {
     if (session.tabGroups.size === 0 && !hasActivePageLeases(session)) {
       session._closing = true;
       log('info', 'session empty after tab reaper, closing', { userId });
-      closeSession(userId, session, { reason: 'tab_reaper_empty_session', clearDownloads: true, clearLocks: true }).catch(() => {});
+      finishIdleSession(() => closeSession(userId, session, { reason: 'tab_reaper_empty_session', clearDownloads: true, clearLocks: true }), () => sessions.size === 0 && sessionCreations.size === 0 && !browserLaunchPromise, () => closeBrowserFully('idle_session_cleanup')).catch(() => {});
       sessionsExpiredTotal.inc();
     }
   }
@@ -6981,7 +7111,7 @@ app.get('/', (req, res) => {
  *   get:
  *     tags: [Browser]
  *     summary: Get dashboard browser state
- *     description: Returns all active sessions and tabs for the local container dashboard. This route is protected by the global access key when configured.
+ *     description: Returns active sessions with per-tab lifetime and navigation errors, plus persistent closedTabs metadata (without saved text). This route is protected by the global access key when configured.
  *     responses:
  *       200:
  *         description: Current browser, session, and tab state.
@@ -6995,6 +7125,19 @@ app.get('/', (req, res) => {
  *                 generatedAt:
  *                   type: string
  *                   format: date-time
+ *                 closedTabs:
+ *                   type: array
+ *                   description: Locally saved closed-tab metadata, without text.
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       userId: { type: string }
+ *                       tabId: { type: string }
+ *                       sessionKey: { type: string }
+ *                       url: { type: string }
+ *                       title: { type: string }
+ *                       reason: { type: string }
+ *                       closedAt: { type: number }
  *                 sessions:
  *                   type: array
  *                   items:
@@ -7018,6 +7161,16 @@ app.get('/', (req, res) => {
  *                               type: string
  *                             title:
  *                               type: string
+ *                             navigationError:
+ *                               type: string
+ *                               nullable: true
+ *                             lifetime:
+ *                               type: object
+ *                               properties:
+ *                                 keepOpen: { type: boolean }
+ *                                 protected: { type: boolean }
+ *                                 expiresAt: { type: number, nullable: true }
+ *                                 idleTimeoutMs: { type: number }
  */
 app.get('/dashboard/state', async (_req, res) => {
   const dashboardSessions = [];
@@ -7025,11 +7178,14 @@ app.get('/dashboard/state', async (_req, res) => {
     const tabs = [];
     for (const [sessionKey, group] of session.tabGroups) {
       for (const [tabId, tabState] of group) {
+        tabState.lastTitle = await withTimeout(tabState.page.title(), 1500, 'title').catch(() => tabState.lastTitle || '');
         tabs.push({
           tabId,
           sessionKey,
           url: safePageUrl(tabState.page),
-          title: await tabState.page.title().catch(() => ''),
+          title: tabState.lastTitle,
+          lifetime: tabLifetime(tabState, TAB_INACTIVITY_MS, Date.now(), tabLocks.get(tabId)),
+          navigationError: tabState.navigationError || null,
         });
       }
     }
@@ -7040,7 +7196,7 @@ app.get('/dashboard/state', async (_req, res) => {
     });
   }
   const running = browser !== null && (browser.isConnected?.() ?? false);
-  res.json({ running, generatedAt: new Date().toISOString(), sessions: dashboardSessions });
+  res.json({ running, generatedAt: new Date().toISOString(), sessions: dashboardSessions, closedTabs: tabHistory.list().map(({ text, ...entry }) => entry) });
 });
 
 /**
@@ -7078,7 +7234,7 @@ app.get('/dashboard/tabs/:tabId/activity', (req, res) => {
  *   get:
  *     tags: [Tabs]
  *     summary: List open tabs
- *     description: Returns all tabs for a given userId.
+ *     description: Returns all tabs for a given userId, including lifetime protection status and any retained navigationError.
  *     parameters:
  *       - name: userId
  *         in: query
@@ -7123,11 +7279,14 @@ app.get('/tabs', async (req, res) => {
     const tabs = [];
     for (const [listItemId, group] of session.tabGroups) {
       for (const [tabId, tabState] of group) {
+        tabState.lastTitle = await withTimeout(tabState.page.title(), 1500, 'title').catch(() => tabState.lastTitle || '');
         tabs.push({
           targetId: tabId,
           tabId,
           url: tabState.page.url(),
-          title: await tabState.page.title().catch(() => ''),
+          title: tabState.lastTitle,
+          lifetime: tabLifetime(tabState, TAB_INACTIVITY_MS, Date.now(), tabLocks.get(tabId)),
+          navigationError: tabState.navigationError || null,
           listItemId
         });
       }
@@ -7216,7 +7375,7 @@ app.post('/tabs/open', async (req, res) => {
       await withPageLoadDuration('open_url', () => navigatePage(page, url));
       recordNavSuccess(userId);
     } catch (navErr) {
-      if ((isProxyError(navErr) || isTimeoutError(navErr)) && proxyPool?.canRotateSessions) {
+      if ((isProxyError(navErr) || isTimeoutError(navErr)) && shouldRecoverSession(proxyPool?.canRotateSessions, session, Date.now(), tabLocks)) {
         log('warn', 'tab open failed, retrying with fresh proxy', {
           reqId: req.reqId, tabId, error: navErr.message,
         });

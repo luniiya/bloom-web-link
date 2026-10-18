@@ -20,3 +20,15 @@ export function keyToPress(event: KeyLike): string | null {
   parts.push(key);
   return parts.join("+");
 }
+
+/** Clipboard shortcuts must read the dashboard clipboard, not the remote one. */
+export function isPasteShortcut(event: KeyLike): boolean {
+  if (event.altKey) return false;
+  return ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v")
+    || (event.shiftKey && !event.ctrlKey && !event.metaKey && event.key === "Insert");
+}
+
+export function isCopyShortcut(event: KeyLike): boolean {
+  return !event.altKey && !event.shiftKey && (event.ctrlKey || event.metaKey)
+    && event.key.toLowerCase() === "c";
+}

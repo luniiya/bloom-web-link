@@ -52,19 +52,23 @@
         <button id="back-button" type="button" class="back-button"><svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0" /><path d="M5 12l6 6" /><path d="M5 12l6 -6" /></svg>All tabs</button>
         <div class="detail-layout">
         <div class="detail-main">
-        <article class="tab-detail">
+        <article id="tab-detail" class="tab-detail">
           <div class="tab-meta">
             <div class="favicon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M3.6 9h16.8" /><path d="M3.6 15h16.8" /><path d="M11.5 3a17 17 0 0 0 0 18" /><path d="M12.5 3a17 17 0 0 1 0 18" /></svg></div>
             <div class="titles"><h2 id="detail-title"></h2><p class="url" id="detail-url"></p></div>
             <span class="session-pill" id="detail-session"></span>
+            <button id="keep-open-button" type="button" aria-pressed="false">Keep open</button>
+            <button id="fullscreen-button" type="button" aria-pressed="false">Fullscreen</button>
           </div>
+          <p id="lifetime-status" role="status"></p>
+          <p id="navigation-error" role="alert" hidden></p>
           <button id="detail-screen" class="screen" type="button" title="Click to interact; keystrokes go to the page while focused">
             <img id="detail-img" alt="Live browser tab screenshot" />
             <span class="loading">Loading view…</span>
           </button>
           <div class="tab-footer"><span class="user" id="detail-user"></span><span class="hint" id="detail-hint">click the page to interact, then type</span></div>
         </article>
-        <div id="detail-missing" class="empty" hidden><h2>Tab closed</h2><p>This tab is no longer open.</p></div>
+        <div id="detail-missing" class="empty" hidden><h2>Tab closed</h2><p id="closure-reason">This tab is no longer open.</p><p>Reopening may restore a conversation if the website still keeps it active.</p><button id="reopen-button" type="button">Reopen saved URL</button><button id="save-transcript-button" type="button">Save last read text</button></div>
         </div>
         <aside class="activity" aria-label="Agent activity for this tab">
           <h3 class="section-heading">Activity</h3>
