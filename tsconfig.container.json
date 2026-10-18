@@ -10,7 +10,8 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    "jsx": "react-jsx",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "scripts/test-container.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts", "scripts/test-container.ts"]
 }

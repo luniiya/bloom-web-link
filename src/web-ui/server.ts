@@ -13,7 +13,7 @@ async function coreFetch(config: ContainerConfig, path: string, init: RequestIni
 // src/web-ui (bind-mounted by compose.yaml) show up on reload without a
 // container rebuild. Only the page load pays this — polling hits /api/*.
 async function buildClient(root: URL): Promise<string> {
-  const build = await Bun.build({ entrypoints: [new URL("client.ts", root).pathname], target: "browser", minify: true });
+  const build = await Bun.build({ entrypoints: [new URL("client.tsx", root).pathname], target: "browser", minify: true });
   if (!build.success || !build.outputs[0]) throw new Error(`Web UI build failed: ${build.logs.join("\n")}`);
   return build.outputs[0].text();
 }

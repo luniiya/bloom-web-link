@@ -5,92 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Bloom Web Link Control Room</title>
     <link rel="stylesheet" href="/styles.css" />
-    <!-- Icons: inline SVGs from Tabler Icons (MIT, https://tabler.io/icons) -->
   </head>
   <body>
-    <header>
-      <div>
-        <p class="eyebrow">BWL / LIVE</p>
-        <h1>Control Room</h1>
-      </div>
-      <div class="status-wrap">
-        <span id="status-dot" class="status-dot"></span>
-        <span id="status">Connecting…</span>
-        <label class="theme-picker">
-          <span>Theme</span>
-          <select id="theme-select" aria-label="Color theme">
-            <option value="auto">Auto</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-        </label>
-        <button id="auth-button" type="button">Access key</button>
-      </div>
-    </header>
-    <main>
-      <section id="grid-view">
-        <section class="summary" aria-live="polite">
-          <div><strong id="session-count">0</strong><span>sessions</span></div>
-          <div><strong id="tab-count">0</strong><span>live tabs</span></div>
-          <div><strong id="updated">—</strong><span>last sync</span></div>
-        </section>
-
-        <section class="tab-section">
-          <h3 class="section-heading">Open</h3>
-          <p id="empty-open" class="empty-inline" hidden>No open tabs. Connect an MCP client to <code>/mcp</code> — new agent tabs will appear here automatically.</p>
-          <section id="grid-open" class="grid" aria-label="Open browser tabs"></section>
-        </section>
-
-        <section class="tab-section">
-          <h3 class="section-heading">Closed</h3>
-          <p id="empty-closed" class="empty-inline" hidden>No closed tabs yet.</p>
-          <section id="grid-closed" class="grid grid-closed" aria-label="Recently closed tabs"></section>
-        </section>
-      </section>
-
-      <section id="detail-view" hidden>
-        <button id="back-button" type="button" class="back-button"><svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l14 0" /><path d="M5 12l6 6" /><path d="M5 12l6 -6" /></svg>All tabs</button>
-        <div class="detail-layout">
-        <div class="detail-main">
-        <article id="tab-detail" class="tab-detail">
-          <div class="tab-meta">
-            <div class="favicon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M3.6 9h16.8" /><path d="M3.6 15h16.8" /><path d="M11.5 3a17 17 0 0 0 0 18" /><path d="M12.5 3a17 17 0 0 1 0 18" /></svg></div>
-            <div class="titles"><h2 id="detail-title"></h2><p class="url" id="detail-url"></p></div>
-            <span class="session-pill" id="detail-session"></span>
-            <button id="keep-open-button" type="button" aria-pressed="false">Keep open</button>
-            <button id="fullscreen-button" type="button" aria-pressed="false">Fullscreen</button>
-          </div>
-          <p id="lifetime-status" role="status"></p>
-          <p id="navigation-error" role="alert" hidden></p>
-          <button id="detail-screen" class="screen" type="button" title="Click to interact; keystrokes go to the page while focused">
-            <img id="detail-img" alt="Live browser tab screenshot" />
-            <span class="loading">Loading view…</span>
-          </button>
-          <div class="tab-footer"><span class="user" id="detail-user"></span><span class="hint" id="detail-hint">click the page to interact, then type</span></div>
-        </article>
-        <div id="detail-missing" class="empty" hidden><h2>Tab closed</h2><p id="closure-reason">This tab is no longer open.</p><p>Reopening may restore a conversation if the website still keeps it active.</p><button id="reopen-button" type="button">Reopen saved URL</button><button id="save-transcript-button" type="button">Save last read text</button></div>
-        </div>
-        <aside class="activity" aria-label="Agent activity for this tab">
-          <h3 class="section-heading">Activity</h3>
-          <p id="activity-empty" class="activity-empty">No calls yet.</p>
-          <ol id="activity-list" class="activity-list"></ol>
-        </aside>
-        </div>
-      </section>
-    </main>
-    <template id="tab-template">
-      <button class="tab-card" type="button" title="Open this tab">
-        <div class="tab-meta">
-          <div class="favicon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M3.6 9h16.8" /><path d="M3.6 15h16.8" /><path d="M11.5 3a17 17 0 0 0 0 18" /><path d="M12.5 3a17 17 0 0 1 0 18" /></svg></div>
-          <div class="titles"><h2></h2><p class="url"></p></div>
-        </div>
-        <div class="screen-thumb">
-          <img alt="Live browser tab screenshot" />
-          <span class="loading">Loading view…</span>
-        </div>
-        <div class="tab-footer"><span class="session-pill"></span><span class="user"></span></div>
-      </button>
-    </template>
+    <!-- Rendered by client.tsx (React); components live in ./components. -->
+    <div id="root"></div>
     <script type="module" src="/client.js"></script>
   </body>
 </html>

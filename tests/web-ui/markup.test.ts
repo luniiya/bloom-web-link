@@ -1,10 +1,41 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { createElement as h } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Header } from "../../src/web-ui/components/Header.tsx";
+import { GridView } from "../../src/web-ui/components/GridView.tsx";
+import { DetailView } from "../../src/web-ui/components/DetailView.tsx";
+import type { ActivityEntry } from "../../src/web-ui/activity.ts";
+import type { ClosedEntry, State } from "../../src/web-ui/types.ts";
 
 const read = (name: string) => readFileSync(new URL(`../../src/web-ui/${name}`, import.meta.url), "utf8");
-const html = read("index.html");
+const page = read("index.html");
+
+const session = { userId: "user-abcdefghijkl", lastAccess: "2026-01-01T00:00:00Z", tabs: [
+  { tabId: "t1", sessionKey: "chat", url: "https://example.test/", title: "Example", navigationError: "boom\nstack",
+    lifetime: { keepOpen: false, protected: false, expiresAt: null, idleTimeoutMs: 0 } },
+] };
+const state: State = { running: true, generatedAt: "2026-01-01T00:00:00Z", sessions: [session] };
+const last: ClosedEntry = { session: { ...session, tabs: [] }, tab: { tabId: "t2", sessionKey: "chat", url: "https://example.test/old", title: "Old" }, closedAt: 1, reason: "idle_timeout" };
+const activity: ActivityEntry[] = [{ seq: 1, ts: "2026-01-01T00:00:00Z", action: "click", detail: "button", status: 500, ms: 12, source: "dashboard" }];
+const noop = () => {};
+const detailProps = { state, activity, onStatus: noop, refresh: async () => {} };
+
+const header = renderToStaticMarkup(h(Header, { status: "Connecting…", online: false, theme: "auto", onThemeChange: noop, authHidden: false, onAuth: noop }));
+const grid = renderToStaticMarkup(h(GridView, { hidden: false, state, open: [{ session, tab: session.tabs[0]! }], closed: [last] }));
+const openDetail = renderToStaticMarkup(h(DetailView, { ...detailProps, userId: session.userId, tabId: "t1" }));
+const closedDetail = renderToStaticMarkup(h(DetailView, { ...detailProps, userId: session.userId, tabId: "t2", last }));
+const html = [header, grid, openDetail, closedDetail].join("\n");
 
 describe("index.html", () => {
+  test("is a shell that loads the React client", () => {
+    expect(page).toContain('<div id="root"></div>');
+    expect(page).toContain('<script type="module" src="/client.js"></script>');
+    expect(read("client.tsx")).toContain('getElementById("root")');
+  });
+});
+
+describe("rendered markup", () => {
   test("no <p> contains block-level children (the browser would split it)", () => {
     // Regression: <p hidden><h2>Tab closed</h2></p> left "Tab closed" visible on open tabs.
     for (const match of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/g)) {
@@ -13,11 +44,21 @@ describe("index.html", () => {
   });
 
   test("the closed-tab notice is one hidden element holding its heading", () => {
-    expect(html).toMatch(/<div id="detail-missing"[^>]*\bhidden\b[^>]*>\s*<h2>Tab closed<\/h2>/);
+    expect(openDetail).toMatch(/<div id="detail-missing"[^>]*\bhidden\b[^>]*>\s*<h2>Tab closed<\/h2>/);
+    expect(closedDetail).toMatch(/<div id="detail-missing" class="empty">\s*<h2>Tab closed<\/h2>/);
+    expect(closedDetail).toContain("Closed by the idle timer");
+    expect(closedDetail).toMatch(/<button id="detail-screen"[^>]*\bhidden\b/);
+    expect(closedDetail).toMatch(/<button id="keep-open-button"[^>]*\bhidden\b/);
+  });
+
+  test("open tab shows its controls and navigation error", () => {
+    expect(openDetail).toContain(">Keep open</button>");
+    expect(openDetail).toContain("Page navigation failed. The tab is still open. boom<");
+    expect(openDetail).toContain("Automatic idle cleanup disabled");
   });
 
   test("fullscreen control is inside the fullscreen tab", () => {
-    expect(html).toMatch(/<article id="tab-detail"[\s\S]*id="fullscreen-button"[\s\S]*<\/article>/);
+    expect(openDetail).toMatch(/<article id="tab-detail"[\s\S]*id="fullscreen-button"[\s\S]*<\/article>/);
     expect(read("styles.css")).toContain(".tab-detail:fullscreen .screen");
   });
 
@@ -26,20 +67,29 @@ describe("index.html", () => {
   });
 
   test("has the activity log panel", () => {
-    expect(html).toContain('id="activity-list"');
-    expect(html).toContain('id="activity-empty"');
+    expect(openDetail).toContain('id="activity-list"');
+    expect(openDetail).toContain('id="activity-empty"');
+    expect(openDetail).toMatch(/<li class="failed from-dashboard">/);
+  });
+
+  test("grid cards keep their classes and open/closed sections", () => {
+    expect(grid).toMatch(/<section id="grid-open"[^>]*><button class="tab-card"/);
+    expect(grid).toMatch(/<section id="grid-closed"[^>]*><button class="tab-card closed"/);
+    expect(grid).toContain('<span class="user">user-abcde…</span>');
   });
 
   test("uses SVG icons, not text glyphs, for arrows and markers", () => {
-    for (const file of ["index.html", "client.ts", "styles.css"]) {
+    const sources = ["index.html", "styles.css", "input.ts", ...readdirSync(new URL("../../src/web-ui/components/", import.meta.url)).map((f) => `components/${f}`)];
+    for (const file of sources) {
       expect(read(file)).not.toMatch(/[←→↑↓◢◣◤◥●▶◀]|&larr;|&rarr;/);
     }
-    expect(html).toMatch(/<button id="back-button"[^>]*><svg class="icon"/);
+    expect(openDetail).toMatch(/<button id="back-button"[^>]*><svg class="icon"/);
   });
 
-  test("every id the client looks up exists in the page", () => {
-    const ids = [...read("client.ts").matchAll(/querySelector<[^>]+>\("#([\w-]+)"\)/g)].map((m) => m[1]);
-    expect(ids.length).toBeGreaterThan(10);
+  test("every id styled in styles.css exists in the rendered page", () => {
+    const ids = [...new Set([...read("styles.css").matchAll(/#([a-z][\w-]*)/gi)].map((m) => m[1]!))]
+      .filter((id) => !/^[0-9a-f]{3,8}$/i.test(id)); // skip hex colors
+    expect(ids.length).toBeGreaterThan(5);
     for (const id of ids) expect(html).toContain(`id="${id}"`);
   });
 });
