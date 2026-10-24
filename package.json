@@ -170,12 +170,12 @@
         "description": "Run several click/type/wait/scroll/navigate/read_text actions in one call"
       },
       {
-        "name": "bwl_downloads",
-        "description": "List a tab's downloaded files or fetch one"
-      },
-      {
         "name": "bwl_save_page",
         "description": "Save the current page or document, like Ctrl+S"
+      },
+      {
+        "name": "bwl_downloads",
+        "description": "List a tab's downloaded files or fetch one"
       }
     ]
   },

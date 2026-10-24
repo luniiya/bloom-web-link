@@ -171,6 +171,19 @@ describe("/api/profiles/create", () => {
     expect(lastSeen()).toMatchObject({ method: "POST", path: "/profiles", body: { burner: true, screen: "1366x768" } });
   });
 
+  test("configures, trashes and restores profiles through the core", async () => {
+    await post(open, "/api/profiles/update", { profile: "shopping", os: "", locale: "", settings: { cores: 8, webcams: 0 } });
+    expect(lastSeen()).toMatchObject({ method: "PATCH", path: "/profiles/shopping", body: { os: "", locale: "", settings: { cores: 8, webcams: 0 } } });
+    expect((await post(open, "/api/profiles/update", { profile: "shopping", settings: "no" })).status).toBe(400);
+    expect((await post(open, "/api/profiles/update", {})).status).toBe(400);
+    await post(open, "/api/profiles/restore", { profile: "shopping" });
+    expect(lastSeen()).toMatchObject({ method: "POST", path: "/profiles/shopping/restore" });
+    expect((await post(open, "/api/profiles/restore", {})).status).toBe(400);
+    expect((await post(secured, "/api/profiles/restore", { profile: "shopping" })).status).toBe(401);
+    await post(open, "/api/profiles/create", { name: "x", settings: { cores: 4 } });
+    expect(lastSeen()).toMatchObject({ method: "POST", path: "/profiles", body: { name: "x", settings: { cores: 4 } } });
+  });
+
   test("re-rolls a profile's fingerprint in the core", async () => {
     await post(open, "/api/profiles/fingerprint", { profile: "main", screen: "1920x1080", os: "windows", locale: "fr-FR", timezone: "Europe/Paris" });
     expect(lastSeen()).toMatchObject({ method: "POST", path: "/profiles/main/fingerprint", body: { screen: "1920x1080", os: "windows", locale: "fr-FR", timezone: "Europe/Paris" } });

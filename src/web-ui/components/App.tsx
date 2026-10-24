@@ -4,7 +4,7 @@ import { ClosureTracker } from "../closures.ts";
 import { parseRoute, type Route } from "../route.ts";
 import { dropShot, queueScreenshot } from "../screenshots.ts";
 import { applyTheme, savedTheme, type Theme } from "../theme.ts";
-import type { ClosedEntry, State, TabRef } from "../types.ts";
+import type { ClosedEntry, Profile, State, TabRef } from "../types.ts";
 import { DetailView } from "./DetailView.tsx";
 import { GridView } from "./GridView.tsx";
 import type { ConnectInfo } from "./AgentPrompt.tsx";
@@ -110,9 +110,9 @@ export function App() {
   }
 
   async function deleteProfile(name: string) {
-    if (!confirm(`Delete profile "${name}"? Its tabs close and its fingerprint, cookies and history are erased.`)) return;
+    if (!confirm(`Move profile "${name}" to the trash? Its tabs close. You can restore it for 30 days.`)) return;
     const response = await fetch("/api/profiles/delete", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ profile: name }) }).catch(() => null);
-    showNotice(response?.ok ? `Deleted profile ${name}` : `Could not delete profile ${name}`);
+    showNotice(response?.ok ? `Moved ${name} to the trash` : `Could not delete profile ${name}`);
     void refresh();
   }
 
@@ -133,6 +133,28 @@ export function App() {
     return !!response?.ok;
   }
 
+  async function configureProfile(name: string, { screen, os, locale, timezone, settings }: ProfileInput): Promise<boolean> {
+    const response = await fetch("/api/profiles/update", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ profile: name, screen, os, locale, timezone, settings }) }).catch(() => null);
+    const body = await response?.json().catch(() => null) as { error?: string } | null;
+    showNotice(response?.ok ? `Saved ${name}` : `Could not save ${name}${body?.error ? `: ${body.error}` : ""}`);
+    void refresh();
+    return !!response?.ok;
+  }
+
+  async function loadTrash(): Promise<Profile[] | null> {
+    const response = await fetch("/api/profiles/trash", { headers: authHeaders() }).catch(() => null);
+    const body = await response?.json().catch(() => null) as { profiles?: Profile[] } | null;
+    return response?.ok ? body?.profiles ?? [] : [];
+  }
+
+  async function restoreProfile(name: string): Promise<boolean> {
+    const response = await fetch("/api/profiles/restore", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ profile: name }) }).catch(() => null);
+    const body = await response?.json().catch(() => null) as { error?: string } | null;
+    showNotice(response?.ok ? `Restored ${name}` : `Could not restore ${name}${body?.error ? `: ${body.error}` : ""}`);
+    void refresh();
+    return !!response?.ok;
+  }
+
   function askForKey() {
     const next = prompt("Bloom Web Link access key (leave blank when authentication is disabled)", getAccessKey());
     if (next === null) return;
@@ -144,7 +166,7 @@ export function App() {
     <>
       <Header theme={theme} onThemeChange={changeTheme} authHidden={authHidden} onAuth={askForKey} connect={connect} profiles={(view?.state.profiles ?? []).map((p) => p.name)} />
       <main>
-        <GridView hidden={shown.kind !== "grid"} connError={connError} state={view?.state ?? null} open={view?.open ?? []} closed={view?.closed ?? []} onDeleteProfile={(name) => void deleteProfile(name)} onCreateProfile={createProfile} onRegenerateProfile={regenerateProfile} />
+        <GridView hidden={shown.kind !== "grid"} connError={connError} state={view?.state ?? null} open={view?.open ?? []} closed={view?.closed ?? []} onDeleteProfile={(name) => void deleteProfile(name)} onCreateProfile={createProfile} onConfigureProfile={configureProfile} onRegenerateProfile={regenerateProfile} loadTrash={loadTrash} onRestoreProfile={restoreProfile} />
         <section id="detail-view" hidden={shown.kind !== "detail"}>
           {view && shown.kind === "detail" && (
             <DetailView

@@ -7,6 +7,8 @@ import { createProfileRuntimes } from '../../lib/profile-runtimes.js';
 import { createTabHistory } from '../../lib/tab-history.js';
 import { excludeProcessTrees, excludeProfileBrowsers, snapshotOwnedBrowserProcesses, PROFILE_ENV_KEY } from '../../lib/process-ownership.js';
 
+import { GPUS } from '../../lib/profile-settings.js';
+const pickGpuFor = os => GPUS[os][1];
 const DAY = 24 * 60 * 60 * 1000;
 let folder;
 let clock;
@@ -173,6 +175,82 @@ describe('profile identity options', () => {
     expect(registry().get('paris')).toMatchObject({ os: 'windows', locale: 'fr-FR', timezone: null });
     r.regenerate(created.id, { os: '' });
     expect(registry().get('paris').os).toBeNull();
+  });
+});
+
+describe('profile settings and trash', () => {
+  test('new profiles get settings and a drift clock; update keeps the fingerprint', () => {
+    const r = registry();
+    const created = r.create({ name: 'a', os: 'macos' });
+    expect(created.settings.gpu.vendor).toBeTruthy();
+    expect(created.drift).toEqual({ rolledAt: clock });
+    const before = created.fingerprint;
+    r.pin(created.id, { 'canvas:seed': 1, 'webGl:vendor': 'Apple', 'screen.width': 1 });
+    const updated = r.update(created.id, { settings: { cores: 8, webcams: 0 }, timezone: 'Europe/Paris', locale: 'fr-FR' });
+    expect(updated.fingerprint).toBe(before);
+    expect(updated).toMatchObject({ timezone: 'Europe/Paris', locale: 'fr-FR', settings: { cores: 8, webcams: 0 } });
+    expect(updated.pinnedConfig['canvas:seed']).toBe(1);
+    expect(r.update('missing', {})).toBeNull();
+    expect(() => r.update(created.id, { settings: { cores: 3 } })).toThrow(/cores/);
+    // Clearing locale goes back to auto.
+    expect(r.update(created.id, { locale: '' }).locale).toBeNull();
+  });
+
+  test('a profile saved before settings existed gets them on load, keeping a valid pinned GPU', () => {
+    const r = registry();
+    const created = r.create({ name: 'old', os: 'windows' });
+    const file = path.join(folder, 'profiles.json');
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const gpu = pickGpuFor('windows');
+    delete saved[0].settings; delete saved[0].drift;
+    saved[0].pinnedConfig = { 'webGl:vendor': gpu[0], 'webGl:renderer': gpu[1], 'canvas:seed': 4 };
+    fs.writeFileSync(file, JSON.stringify(saved));
+    const loaded = registry().get('old');
+    expect(loaded.id).toBe(created.id);
+    expect(loaded.settings.gpu).toEqual({ vendor: gpu[0], renderer: gpu[1] });
+    expect(loaded.drift.rolledAt).toBe(clock);
+
+    saved[0].settings = undefined; saved[0].pinnedConfig = { 'webGl:vendor': 'Bogus', 'webGl:renderer': 'x', 'webGl2:vendor': 'Bogus', 'canvas:seed': 4 };
+    fs.writeFileSync(file, JSON.stringify(saved));
+    expect(registry().get('old').pinnedConfig).toEqual({ 'canvas:seed': 4 });
+  });
+
+  test('deleting moves a profile to the trash; it is hidden, unusable and restorable', () => {
+    const r = registry();
+    const created = r.create({ name: 'shopping' });
+    r.create({ name: 'main' });
+    clock += DAY;
+    r.trash(created.id);
+    expect(r.get('shopping')).toBeUndefined();
+    expect(r.list().map(p => p.name)).toEqual(['main']);
+    expect(r.listTrash()).toEqual([expect.objectContaining({ name: 'shopping', deletedAt: clock, purgeAt: clock + 30 * DAY })]);
+    expect(r.getTrashed('SHOPPING').id).toBe(created.id);
+    expect(() => r.create({ name: 'shopping' })).toThrow(/in the trash/);
+    expect(() => r.trash(r.get('main').id)).toThrow(/cannot be deleted/);
+
+    // Survives a reload, and burner expiry ignores the trash.
+    expect(registry().listTrash()).toHaveLength(1);
+    const burner = r.create({ burner: true });
+    r.trash(burner.id);
+    clock += 100 * DAY;
+    expect(r.expired(clock, 30 * DAY).map(p => p.id)).not.toContain(burner.id);
+
+    const back = r.restore(created.id);
+    expect(back.deletedAt).toBeUndefined();
+    expect(back.lastUsedAt).toBe(clock);
+    expect(r.get('shopping').id).toBe(created.id);
+    expect(r.restore(created.id)).toBeNull();
+  });
+
+  test('profiles are purgeable only after 30 days in the trash', () => {
+    const r = registry();
+    const created = r.create({ name: 'gone' });
+    r.trash(created.id);
+    expect(r.purgeable(clock + 29 * DAY)).toEqual([]);
+    expect(r.purgeable(clock + 31 * DAY).map(p => p.id)).toEqual([created.id]);
+    r.remove(created.id);
+    expect(r.listTrash()).toEqual([]);
+    expect(() => r.create({ name: 'gone' })).not.toThrow();
   });
 });
 

@@ -116,23 +116,42 @@ describe("profiles", () => {
     expect(withProfiles).toContain('<span class="profile-pill" title="Browser profile">shopping</span>');
   });
 
-  test("lists profiles with kind, user agent, state and a delete action", () => {
+  test("lists profiles with kind, user agent, state and a trash action", () => {
     expect(withProfiles).toContain('id="profile-list"');
     expect(withProfiles).toContain('<span class="profile-kind burner">burner</span>');
     expect(withProfiles).toContain("Mozilla/5.0 Firefox/150.0");
     expect(withProfiles).toContain("1 tab · running");
-    // The default "main" profile has no delete button.
-    expect(withProfiles.match(/class="profile-delete"/g)).toHaveLength(2);
+    // The default "main" profile's trash button is shown but disabled.
+    expect(withProfiles.match(/class="profile-trash"/g)).toHaveLength(3);
+    expect(withProfiles).toContain('class="profile-trash" disabled="" aria-label="main can&#x27;t be deleted"');
+    // Hovering it swaps the trash for a deny icon.
+    expect(withProfiles).toContain('class="trash-deny"');
+    expect(withProfiles).toContain('aria-label="Move shopping to the trash"');
   });
 
-  test("profiles are created and re-fingerprinted through a popup", () => {
+  test("profiles are created and configured through a popup", () => {
     const withCreate = renderToStaticMarkup(h(GridView, { hidden: false, state: { ...state, profiles: profiles.map((p) => ({ ...p, screen: { width: 1920, height: 1080 } })) }, open: [], closed: [],
-      onCreateProfile: async () => true, onRegenerateProfile: async () => true }));
+      onCreateProfile: async () => true, onConfigureProfile: async () => true, onRegenerateProfile: async () => true,
+      loadTrash: async () => [], onRestoreProfile: async () => true }));
     expect(withCreate).toContain('id="new-profile-button"');
     expect(withCreate).toContain('<dialog id="profile-dialog"');
     expect(withCreate).toContain('<option value="1920x1080" selected="">1920 × 1080 (default)</option>');
     expect(withCreate).toContain("1920×1080");
-    expect(withCreate.match(/class="profile-action"/g)).toHaveLength(profiles.length);
+    // Configure (settings icon) on every row, and the machine details live in the popup.
+    expect(withCreate.match(/class="profile-action profile-configure"/g)).toHaveLength(profiles.length);
+    expect(withCreate).toContain('aria-label="Configure shopping"');
+    expect(withCreate).not.toContain("Configure</button>");
+    expect(withCreate).toContain("Machine details");
+    expect(withCreate).toContain('id="profile-gpu"');
+    expect(withCreate).not.toContain(">New fingerprint<");
+  });
+
+  test("the trash opens from the profiles header and lists nothing until loaded", () => {
+    const html = renderToStaticMarkup(h(GridView, { hidden: false, state: { ...state, profiles }, open: [], closed: [], loadTrash: async () => [], onRestoreProfile: async () => true }));
+    expect(html).toContain('id="show-trash-button"');
+    expect(html).toContain('<dialog id="trash-dialog"');
+    expect(html).toContain("then they are erased for good");
+    expect(html).not.toMatch(/delete (forever|permanently)/i);
   });
 
   test("the section is omitted when there are no profiles", () => {

@@ -66,7 +66,7 @@ describe('launch compatibility source contract', () => {
     expect(`${probeOptions}\n${sessionContextOptions}`).toContain('contextIdentityOptions({');
     expect(`${probeOptions}\n${sessionContextOptions}`).not.toContain('geolocation:');
     expect(`${probeOptions}\n${sessionContextOptions}`).not.toContain('37.7749');
-    expect(launchBrowser).toContain('locale: launchLocale({ hasProxy: !!proxyPool, directIdentity: CONFIG.directIdentity })');
+    expect(launchBrowser).toContain('locale: profile?.locale || launchLocale({ hasProxy: !!proxyPool, directIdentity: CONFIG.directIdentity })');
   });
 
   test('uses a real desktop window only when interactive desktop mode is explicit', () => {

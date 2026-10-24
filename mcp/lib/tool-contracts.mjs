@@ -362,6 +362,10 @@ export const TOOL_DEFS = [
         os: { type: 'string', enum: ['windows', 'macos', 'linux'], description: 'Spoofed operating system (default: the host OS)' },
         locale: { type: 'string', description: 'Browser locale such as "fr-FR" (default: follows the proxy location)' },
         timezone: { type: 'string', description: 'IANA timezone such as "Europe/Paris" (default: follows the proxy location)' },
+        settings: {
+          type: 'object',
+          description: 'Optional machine traits; the defaults are what a typical computer of that OS reports. gpu {vendor, renderer} (must be one of GET /profiles/options for that OS), cores (2-32), mics, speakers (0-4), webcams (0-2), voices ("auto"|"none"), doNotTrack, globalPrivacyControl, webrtc ("real"|"block"), geoip, humanize, drift (let device traits change slowly over time).',
+        },
       },
       required: [],
     },
@@ -373,7 +377,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'bwl_delete_profile',
-    description: 'Permanently delete a browser profile: closes its tabs and browser and erases its fingerprint, cookies, storage and history.',
+    description: 'Delete a browser profile: closes its tabs and browser and moves it to the trash. A person can restore it from the dashboard for 30 days, after which its fingerprint, cookies, storage and history are erased.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -548,7 +552,7 @@ export function buildRequest(name, args, ctx) {
         body: {
           ...(args.name ? { name: args.name } : {}),
           burner: args.burner === true,
-          ...Object.fromEntries(['screen', 'os', 'locale', 'timezone'].filter(key => args[key]).map(key => [key, args[key]])),
+          ...Object.fromEntries(['screen', 'os', 'locale', 'timezone', 'settings'].filter(key => args[key]).map(key => [key, args[key]])),
         },
       };
     case 'bwl_list_profiles':

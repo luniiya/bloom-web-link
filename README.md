@@ -76,7 +76,7 @@ For hosts that only support stdio, a thin adapter lives in [`mcp/`](mcp/README.m
 | `bwl_list_tabs` | List open tabs (yours plus all profile tabs) |
 | `bwl_create_profile` | Create a named or burner browser profile |
 | `bwl_list_profiles` | List browser profiles |
-| `bwl_delete_profile` | Delete a profile and everything it stored |
+| `bwl_delete_profile` | Move a profile to the trash (restorable from the dashboard for 30 days) |
 | `bwl_close_tab` | Close a tab |
 | `bwl_import_cookies` | Import a Netscape cookie file (requires `BWL_API_KEY`) |
 
@@ -87,7 +87,7 @@ The typical loop is **snapshot → act by ref → snapshot again**. Refs are mor
 A **profile** is a separate Camoufox browser with its own fingerprint (user agent, screen, fonts, canvas/audio noise), cookies, storage and tab history, so sites can't link it to other profiles. Profiles are global: any agent can open tabs in them, and they show up in the dashboard.
 
 - **`main`** is the default. Tabs opened without a `profile` go into it, so every agent shares its cookies and logins. It always exists and can't be deleted.
-- **Named profiles** (`bwl_create_profile({name: "shopping"})`) are kept until you delete them.
+- **Named profiles** (`bwl_create_profile({name: "shopping"})`) are kept until you delete them (and then 30 days in the trash).
 - **Burner profiles** (`bwl_create_profile({burner: true})`, or `bwl_create_tab({profile: "burner"})`) get a generated name. They're wiped, along with their history, after `BWL_BURNER_TTL_DAYS` days (default 30) without use.
 
 Open a tab in a profile with `bwl_create_tab({url, profile: "shopping"})`. All other tab tools work on profile tabs as usual. The fingerprint is created once and reused on every launch, so a profile stays the same "machine" across restarts: same user agent, screen, CPU count, WebGL GPU and font/audio noise. One exception: Camoufox re-rolls canvas noise for every new browser context, so the canvas hash is stable while a profile's session is open but changes after its browser restarts.
@@ -98,7 +98,16 @@ Each profile can also set (in the dashboard's **New profile** popup, or as `bwl_
 - `os`: `windows`, `macos` or `linux` for the user agent, platform and fonts. Defaults to the host OS. The TCP/IP stack is still the host's, so pair a non-host OS with a proxy if a site checks that.
 - `locale` and `timezone` (e.g. `fr-FR`, `Europe/Paris`): they override the proxy's geoip and `BWL_LOCALE` / `BWL_TIMEZONE`.
 
-**New fingerprint** on a profile row (or `POST /profiles/:profile/fingerprint`) closes its browser and gives it a new machine identity with these settings. Cookies and storage are kept.
+- `settings` (all optional; the defaults are what a typical computer of that OS reports):
+  - `gpu`: a real WebGL vendor/renderer pair for that OS (`GET /profiles/options` lists them; software renderers are left out because they give a VM away). Picking a GPU also picks a fitting core count.
+  - `cores`, `mics`, `speakers`, `webcams`: CPU threads and media devices. Nearly every Mac has a webcam; Windows and Linux machines less often.
+  - `voices`: `auto` lists the OS's speech voices (Windows SAPI voices such as Hortense/David/Zira, the macOS set, none on Linux); `none` lists none.
+  - `doNotTrack`, `globalPrivacyControl`, `webrtc` (`real` or `block`), `geoip` (timezone and location from the public IP, using the GeoLite database baked into the image), `humanize` (curved mouse paths).
+  - `drift` (on by default): the machine changes a little over time. Each day there's a small chance a headset (a mic and an output) or a webcam appears or disappears, and about one launch in seven uses a restored window instead of a maximized one.
+
+**Configure** on a profile row (or `PATCH /profiles/:profile`) changes any of these in place and restarts its browser, keeping the fingerprint, cookies and storage. Changing the OS gives it a new fingerprint, since fonts, GPU and user agent differ per OS. **New fingerprint** inside the dialog (or `POST /profiles/:profile/fingerprint`) closes the browser and gives the profile a new machine identity. Cookies and storage are kept.
+
+**Deleting** a profile (the trash icon, `DELETE /profiles/:profile` or `bwl_delete_profile`) moves it to the trash: its tabs close and it disappears, but its fingerprint, cookies and storage are kept for 30 days. **Show trash** lists trashed profiles with a **Restore** button (`GET /profiles/trash`, `POST /profiles/:profile/restore`). After 30 days they are erased; there is deliberately no permanent-delete button. A trashed name can't be reused until it's restored or erased. The default `main` profile can't be deleted.
 
 Each profile with open tabs runs its own browser process, which uses roughly 300–500 MB of RAM. It shuts down after `BROWSER_IDLE_TIMEOUT_MS` once its tabs are closed, and `BWL_MAX_PROFILE_BROWSERS` caps how many can run at once.
 

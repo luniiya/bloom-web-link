@@ -1274,7 +1274,11 @@ async function buildCamoufoxOptionsNow({ hostOS, launchProxy, vdDisplay, useDesk
     virtual_display: vdDisplay,
     addons: extraAddons,
     exclude_addons: CONFIG.disableDefaultAddons ? ['UBO'] : undefined,
-    firefox_user_prefs: CONFIG.cookieBannerHandlingEnabled ? { ...COOKIE_BANNER_FIREFOX_PREFS } : undefined,
+    firefox_user_prefs: {
+      ...(CONFIG.cookieBannerHandlingEnabled ? COOKIE_BANNER_FIREFOX_PREFS : {}),
+      // Speech synthesis is off in a container; profiles list their OS's voices.
+      ...(profile ? { 'media.webspeech.synth.enabled': true } : {}),
+    },
     // A profile reuses its stored fingerprint and the values pinned from its
     // first launch, so it looks like the same machine every time.
     ...(profile ? profileLaunchOptions(profile) : {}),
@@ -7475,8 +7479,8 @@ async function restartProfileBrowser(profile, reason) {
  * /profiles/{profile}:
  *   delete:
  *     tags: [Profiles]
- *     summary: Delete a browser profile
- *     description: Closes its tabs and browser, then erases its fingerprint, persisted storage and tab history.
+ *     summary: Move a browser profile to the trash
+ *     description: Closes its tabs and browser and hides the profile. Its fingerprint, storage and history are kept for 30 days, so it can be restored with POST /profiles/{profile}/restore; after that they are erased.
  *     parameters:
  *       - name: profile
  *         in: path
@@ -7486,7 +7490,7 @@ async function restartProfileBrowser(profile, reason) {
  *           type: string
  *     responses:
  *       200:
- *         description: Deleted.
+ *         description: Trashed.
  *         content:
  *           application/json:
  *             schema:
@@ -7494,14 +7498,64 @@ async function restartProfileBrowser(profile, reason) {
  *               properties:
  *                 ok: { type: boolean }
  *                 deleted: { type: string }
+ *                 purgeAt: { type: integer, description: When the profile's data is erased (ms since epoch). }
  *       404: { description: Unknown profile. }
  *       409: { description: The default "main" profile cannot be deleted. }
  */
 app.delete('/profiles/:profile', async (req, res) => {
   try {
     const profile = resolveProfile(req.params.profile);
-    await deleteProfile(profile, 'profile_deleted');
-    res.json({ ok: true, deleted: profile.name });
+    if (profile.name === DEFAULT_PROFILE_NAME) {
+      throw Object.assign(new Error(`the "${DEFAULT_PROFILE_NAME}" profile cannot be deleted`), { statusCode: 409, code: 'profile_protected' });
+    }
+    await restartProfileBrowser(profile, 'profile_trashed');
+    const trashed = profileRegistry.trash(profile.id);
+    log('info', 'profile trashed', { profileId: profile.id, name: profile.name, kind: profile.kind });
+    res.json({ ok: true, deleted: profile.name, purgeAt: profileRegistry.describe(trashed).purgeAt });
+  } catch (err) {
+    sendProfileError(err, req, res);
+  }
+});
+
+/**
+ * @openapi
+ * /profiles/trash:
+ *   get:
+ *     tags: [Profiles]
+ *     summary: List trashed profiles
+ *     description: Deleted profiles that can still be restored, each with the time (purgeAt) its data is erased.
+ *     responses:
+ *       200: { description: The trashed profiles. }
+ */
+app.get('/profiles/trash', (req, res) => {
+  res.json({ profiles: profileRegistry.listTrash() });
+});
+
+/**
+ * @openapi
+ * /profiles/{profile}/restore:
+ *   post:
+ *     tags: [Profiles]
+ *     summary: Restore a trashed profile
+ *     parameters:
+ *       - name: profile
+ *         in: path
+ *         required: true
+ *         description: Profile name or id
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200: { description: The restored profile. }
+ *       404: { description: No such profile in the trash. }
+ */
+app.post('/profiles/:profile/restore', (req, res) => {
+  try {
+    const trashed = profileRegistry.getTrashed(req.params.profile);
+    if (!trashed) throw Object.assign(new Error(`No profile "${req.params.profile}" in the trash`), { statusCode: 404, code: 'profile_not_found' });
+    if (profileRegistry.get(trashed.name)) throw Object.assign(new Error(`profile "${trashed.name}" already exists`), { statusCode: 409 });
+    const restored = profileRegistry.restore(trashed.id);
+    log('info', 'profile restored', { profileId: restored.id, name: restored.name });
+    res.json(profileSummary(restored));
   } catch (err) {
     sendProfileError(err, req, res);
   }
@@ -7516,7 +7570,13 @@ async function sweepExpiredBurners() {
     await deleteProfile(profile, 'burner_expired').catch(err => log('warn', 'burner cleanup failed', { profileId: profile.id, error: err.message }));
   }
 }
-setInterval(() => { sweepExpiredBurners().catch(() => {}); }, 60 * 60 * 1000).unref();
+// Trash retention: erase profiles deleted more than TRASH_TTL_DAYS ago.
+async function sweepTrash() {
+  for (const profile of profileRegistry.purgeable(Date.now())) {
+    await deleteProfile(profile, 'trash_expired').catch(err => log('warn', 'trash purge failed', { profileId: profile.id, error: err.message }));
+  }
+}
+setInterval(() => { sweepExpiredBurners().catch(() => {}); sweepTrash().catch(() => {}); }, 60 * 60 * 1000).unref();
 
 // Cleanup stale sessions
 setInterval(() => {

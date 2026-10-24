@@ -12,6 +12,7 @@ async function coreFetch(config: ContainerConfig, path: string, init: RequestIni
 
 // Profile identity settings; the core validates their values.
 type IdentityInput = { screen?: unknown; os?: unknown; locale?: unknown; timezone?: unknown };
+const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const IDENTITY_KEYS = ["screen", "os", "locale", "timezone"] as const;
 
 function badIdentity(input: IdentityInput): string | null {
@@ -65,12 +66,13 @@ export async function startWebUi(config: ContainerConfig): Promise<Bun.Server> {
         return coreFetch(config, "/tabs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: input.userId, sessionKey: input.sessionKey || "default", url: input.url }) });
       }
       if (url.pathname === "/api/profiles/create" && request.method === "POST") {
-        const input = await request.json() as { name?: string; burner?: boolean } & IdentityInput;
+        const input = await request.json() as { name?: string; burner?: boolean; settings?: unknown } & IdentityInput;
         if (input.name !== undefined && typeof input.name !== "string") return json({ error: "name must be a string" }, 400);
         const bad = badIdentity(input);
         if (bad) return json({ error: bad }, 400);
         if (!input.name && input.burner !== true) return json({ error: "name is required unless burner is true" }, 400);
-        return coreFetch(config, "/profiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: input.name, burner: input.burner === true, ...identity(input) }) });
+        if (input.settings !== undefined && !isObject(input.settings)) return json({ error: "settings must be an object" }, 400);
+        return coreFetch(config, "/profiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: input.name, burner: input.burner === true, ...identity(input), ...(input.settings ? { settings: input.settings } : {}) }) });
       }
       if (url.pathname === "/api/profiles/fingerprint" && request.method === "POST") {
         const input = await request.json() as { profile?: string } & IdentityInput;
@@ -78,6 +80,21 @@ export async function startWebUi(config: ContainerConfig): Promise<Bun.Server> {
         const bad = badIdentity(input);
         if (bad) return json({ error: bad }, 400);
         return coreFetch(config, `/profiles/${encodeURIComponent(input.profile)}/fingerprint`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(identity(input)) });
+      }
+      if (url.pathname === "/api/profiles/options") return coreFetch(config, "/profiles/options");
+      if (url.pathname === "/api/profiles/trash") return coreFetch(config, "/profiles/trash");
+      if (url.pathname === "/api/profiles/restore" && request.method === "POST") {
+        const input = await request.json() as { profile?: string };
+        if (!input.profile || typeof input.profile !== "string") return json({ error: "profile is required" }, 400);
+        return coreFetch(config, `/profiles/${encodeURIComponent(input.profile)}/restore`, { method: "POST" });
+      }
+      if (url.pathname === "/api/profiles/update" && request.method === "POST") {
+        const input = await request.json() as { profile?: string; settings?: unknown } & IdentityInput;
+        if (!input.profile || typeof input.profile !== "string") return json({ error: "profile is required" }, 400);
+        const bad = badIdentity(input);
+        if (bad) return json({ error: bad }, 400);
+        if (input.settings !== undefined && !isObject(input.settings)) return json({ error: "settings must be an object" }, 400);
+        return coreFetch(config, `/profiles/${encodeURIComponent(input.profile)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...Object.fromEntries(IDENTITY_KEYS.filter((name) => input[name] !== undefined).map((name) => [name, input[name]])), ...(input.settings ? { settings: input.settings } : {}) }) });
       }
       if (url.pathname === "/api/profiles/delete" && request.method === "POST") {
         const input = await request.json() as { profile?: string };

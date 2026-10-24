@@ -124,11 +124,103 @@
             "type": "string",
             "description": "Core session id of the profile (profile:<id>)"
           },
+          "os": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "windows",
+              "macos",
+              "linux"
+            ]
+          },
+          "locale": {
+            "type": "string",
+            "nullable": true
+          },
+          "timezone": {
+            "type": "string",
+            "nullable": true
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ProfileSettings"
+          },
           "browserRunning": {
             "type": "boolean"
           },
           "tabs": {
             "type": "integer"
+          }
+        }
+      },
+      "ProfileSettings": {
+        "type": "object",
+        "description": "Per-profile browser settings. Omitted fields keep their current (or default) value.",
+        "properties": {
+          "gpu": {
+            "type": "object",
+            "nullable": true,
+            "description": "WebGL vendor/renderer from GET /profiles/options; null picks a common one",
+            "properties": {
+              "vendor": {
+                "type": "string"
+              },
+              "renderer": {
+                "type": "string"
+              }
+            }
+          },
+          "cores": {
+            "type": "integer",
+            "nullable": true,
+            "description": "navigator.hardwareConcurrency; null keeps the fingerprint value"
+          },
+          "mics": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4
+          },
+          "speakers": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4
+          },
+          "webcams": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "voices": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "none"
+            ],
+            "description": "auto lists the speech voices that OS ships"
+          },
+          "doNotTrack": {
+            "type": "boolean"
+          },
+          "globalPrivacyControl": {
+            "type": "boolean"
+          },
+          "webrtc": {
+            "type": "string",
+            "enum": [
+              "real",
+              "block"
+            ]
+          },
+          "geoip": {
+            "type": "boolean",
+            "description": "Timezone and geolocation from the public IP"
+          },
+          "humanize": {
+            "type": "boolean",
+            "description": "Human-like cursor movement"
+          },
+          "drift": {
+            "type": "boolean",
+            "description": "Slow, realistic changes over time (devices plugged in, window not always maximized)"
           }
         }
       }
@@ -2289,6 +2381,97 @@
         }
       }
     },
+    "/tabs/{tabId}/save-page": {
+      "post": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Save the current page or document (like Ctrl+S)",
+        "description": "A document tab (PDF, image, CSV, ...) is saved as its original bytes, fetched with the tab's cookies.\nAn HTML page is saved as its current DOM, including changes made by scripts. The file becomes one of\nthe tab's downloads (GET /tabs/{tabId}/downloads).\n",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved download artifact."
+          },
+          "404": {
+            "description": "Tab not found."
+          },
+          "413": {
+            "description": "Document exceeds the size limit."
+          }
+        }
+      }
+    },
+    "/tabs/{tabId}/downloads/{downloadId}/file": {
+      "get": {
+        "tags": [
+          "Content"
+        ],
+        "summary": "Download one captured file",
+        "description": "Streams the raw file a tab downloaded, so an agent can save it with curl.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "downloadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file, as an attachment."
+          },
+          "404": {
+            "description": "Unknown tab or download, or the download failed."
+          }
+        }
+      }
+    },
     "/tabs/{tabId}/downloads": {
       "get": {
         "tags": [
@@ -3301,6 +3484,30 @@
                   },
                   "burner": {
                     "type": "boolean"
+                  },
+                  "screen": {
+                    "type": "string",
+                    "description": "Screen size as WIDTHxHEIGHT (default 1920x1080)"
+                  },
+                  "os": {
+                    "type": "string",
+                    "enum": [
+                      "windows",
+                      "macos",
+                      "linux"
+                    ],
+                    "description": "Spoofed operating system (default: the host OS)"
+                  },
+                  "locale": {
+                    "type": "string",
+                    "description": "Browser locale such as fr-FR (default: follows the proxy or BWL_LOCALE)"
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "description": "IANA timezone such as Europe/Paris (default: follows the proxy or BWL_TIMEZONE)"
+                  },
+                  "settings": {
+                    "$ref": "#/components/schemas/ProfileSettings"
                   }
                 }
               }
@@ -3327,13 +3534,137 @@
         }
       }
     },
+    "/profiles/{profile}/fingerprint": {
+      "post": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Give a profile a new fingerprint",
+        "description": "Closes the profile's tabs and browser and generates a new machine identity (user agent, screen, noise). Cookies and storage are kept.",
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "description": "Profile name or id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "screen": {
+                    "type": "string",
+                    "description": "Screen size as WIDTHxHEIGHT (default 1920x1080)"
+                  },
+                  "os": {
+                    "type": "string",
+                    "enum": [
+                      "windows",
+                      "macos",
+                      "linux"
+                    ],
+                    "description": "Spoofed operating system (default: the host OS)"
+                  },
+                  "locale": {
+                    "type": "string",
+                    "description": "Browser locale such as fr-FR (default: follows the proxy or BWL_LOCALE)"
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "description": "IANA timezone such as Europe/Paris (default: follows the proxy or BWL_TIMEZONE)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The profile with its new fingerprint."
+          },
+          "400": {
+            "description": "Invalid screen size."
+          },
+          "404": {
+            "description": "Unknown profile."
+          }
+        }
+      }
+    },
     "/profiles/{profile}": {
+      "patch": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Change a profile's settings",
+        "description": "Keeps the fingerprint (user agent, fonts, noise) and changes the rest. A different os needs a new fingerprint, so it regenerates one. A running browser is restarted to apply the change; cookies and storage are kept.",
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "description": "Profile name or id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "screen": {
+                    "type": "string"
+                  },
+                  "os": {
+                    "type": "string",
+                    "enum": [
+                      "windows",
+                      "macos",
+                      "linux",
+                      ""
+                    ]
+                  },
+                  "locale": {
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "type": "string"
+                  },
+                  "settings": {
+                    "$ref": "#/components/schemas/ProfileSettings"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated profile."
+          },
+          "400": {
+            "description": "Invalid setting."
+          },
+          "404": {
+            "description": "Unknown profile."
+          }
+        }
+      },
       "delete": {
         "tags": [
           "Profiles"
         ],
-        "summary": "Delete a browser profile",
-        "description": "Closes its tabs and browser, then erases its fingerprint, persisted storage and tab history.",
+        "summary": "Move a browser profile to the trash",
+        "description": "Closes its tabs and browser and hides the profile. Its fingerprint, storage and history are kept for 30 days, so it can be restored with POST /profiles/{profile}/restore; after that they are erased.",
         "parameters": [
           {
             "name": "profile",
@@ -3347,7 +3678,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Deleted.",
+            "description": "Trashed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3358,6 +3689,10 @@
                     },
                     "deleted": {
                       "type": "string"
+                    },
+                    "purgeAt": {
+                      "type": "integer",
+                      "description": "When the profile's data is erased (ms since epoch)."
                     }
                   }
                 }
@@ -3369,6 +3704,61 @@
           },
           "409": {
             "description": "The default \"main\" profile cannot be deleted."
+          }
+        }
+      }
+    },
+    "/profiles/options": {
+      "get": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Choices for profile settings",
+        "description": "GPUs per OS, CPU core counts and the other enumerated profile settings.",
+        "responses": {
+          "200": {
+            "description": "The options."
+          }
+        }
+      }
+    },
+    "/profiles/trash": {
+      "get": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "List trashed profiles",
+        "description": "Deleted profiles that can still be restored, each with the time (purgeAt) its data is erased.",
+        "responses": {
+          "200": {
+            "description": "The trashed profiles."
+          }
+        }
+      }
+    },
+    "/profiles/{profile}/restore": {
+      "post": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Restore a trashed profile",
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "description": "Profile name or id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The restored profile."
+          },
+          "404": {
+            "description": "No such profile in the trash."
           }
         }
       }

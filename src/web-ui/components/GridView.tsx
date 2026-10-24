@@ -1,4 +1,4 @@
-import type { ClosedEntry, State, TabRef } from "../types.ts";
+import type { ClosedEntry, Profile, State, TabRef } from "../types.ts";
 import { ProfileList } from "./ProfileList.tsx";
 import type { ProfileInput } from "./ProfileDialog.tsx";
 import { TabCard } from "./TabCard.tsx";
@@ -12,10 +12,13 @@ type Props = {
   closed: ClosedEntry[];
   onDeleteProfile?: (name: string) => void;
   onCreateProfile?: (input: ProfileInput) => Promise<boolean>;
+  onConfigureProfile?: (name: string, input: ProfileInput) => Promise<boolean>;
   onRegenerateProfile?: (name: string, input: ProfileInput) => Promise<boolean>;
+  loadTrash?: () => Promise<Profile[] | null>;
+  onRestoreProfile?: (name: string) => Promise<boolean>;
 };
 
-export function GridView({ hidden, connError = null, state, open, closed, onDeleteProfile, onCreateProfile, onRegenerateProfile }: Props) {
+export function GridView({ hidden, connError = null, state, open, closed, onDeleteProfile, onCreateProfile, onConfigureProfile, onRegenerateProfile, loadTrash, onRestoreProfile }: Props) {
   return (
     <section id="grid-view" hidden={hidden}>
       <section className="summary" aria-live="polite">
@@ -33,7 +36,7 @@ export function GridView({ hidden, connError = null, state, open, closed, onDele
         </section>
       </section>
 
-      <ProfileList profiles={state?.profiles ?? []} onDelete={onDeleteProfile} onCreate={onCreateProfile} onRegenerate={onRegenerateProfile} />
+      <ProfileList profiles={state?.profiles ?? []} onDelete={onDeleteProfile} onCreate={onCreateProfile} onConfigure={onConfigureProfile} onRegenerate={onRegenerateProfile} loadTrash={loadTrash} onRestore={onRestoreProfile} />
 
       <section className="tab-section">
         <h3 className="section-heading">Closed</h3>
