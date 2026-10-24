@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Header } from "../../src/web-ui/components/Header.tsx";
-import { GridView } from "../../src/web-ui/components/GridView.tsx";
+import { browserStatus, GridView } from "../../src/web-ui/components/GridView.tsx";
 import { DetailView } from "../../src/web-ui/components/DetailView.tsx";
 import type { ActivityEntry } from "../../src/web-ui/activity.ts";
 import type { ClosedEntry, State } from "../../src/web-ui/types.ts";
@@ -21,7 +21,8 @@ const activity: ActivityEntry[] = [{ seq: 1, ts: "2026-01-01T00:00:00Z", action:
 const noop = () => {};
 const detailProps = { state, activity, onStatus: noop, refresh: async () => {} };
 
-const header = renderToStaticMarkup(h(Header, { status: "Connecting…", online: false, theme: "auto", onThemeChange: noop, authHidden: false, onAuth: noop }));
+const header = renderToStaticMarkup(h(Header, { theme: "auto", onThemeChange: noop, authHidden: false, onAuth: noop,
+  connect: { mcpUrl: "http://localhost:9377/mcp", authRequired: false }, profiles: ["main", "work"] }));
 const grid = renderToStaticMarkup(h(GridView, { hidden: false, state, open: [{ session, tab: session.tabs[0]! }], closed: [last] }));
 const openDetail = renderToStaticMarkup(h(DetailView, { ...detailProps, userId: session.userId, tabId: "t1" }));
 const closedDetail = renderToStaticMarkup(h(DetailView, { ...detailProps, userId: session.userId, tabId: "t2", last }));
@@ -124,7 +125,62 @@ describe("profiles", () => {
     expect(withProfiles.match(/class="profile-delete"/g)).toHaveLength(2);
   });
 
+  test("profiles can be created from the list", () => {
+    const withCreate = renderToStaticMarkup(h(GridView, { hidden: false, state: { ...state, profiles }, open: [], closed: [], onCreateProfile: async () => true }));
+    expect(withCreate).toContain('id="profile-create"');
+  });
+
   test("the section is omitted when there are no profiles", () => {
     expect(grid).not.toContain('id="profile-list"');
+  });
+});
+
+describe("connect your agent", () => {
+  test("lives in the header with a profile picker, copy button and preview popup", () => {
+    expect(header).toContain('<option value="work">work</option>');
+    expect(header).toContain(">Click to copy prompt</span>");
+    expect(header).toContain(">Connect your agent</span>");
+    expect(header).toContain('<dialog id="agent-prompt-dialog"');
+    expect(header).toContain("Your dedicated browser profile is `main`");
+    expect(header).toContain("http://localhost:9377/mcp");
+  });
+
+  test("is not on the main page", () => {
+    expect(grid).not.toContain("copy-agent-prompt");
+  });
+});
+
+describe("theme button", () => {
+  test("shows the current theme as a single icon button", () => {
+    expect(header).toContain('id="theme-button"');
+    expect(header).toContain('title="Theme: Auto (click for Light)"');
+    expect(header).not.toContain("<select id=\"theme-select\"");
+  });
+});
+
+describe("browser status", () => {
+  const profile = { id: "p", name: "work", kind: "named" as const, createdAt: 1, lastUsedAt: 1, userAgent: null, browserRunning: false, tabs: 0 };
+
+  test("sits in the summary strip", () => {
+    expect(grid).toContain('id="browser-status"');
+  });
+
+  test("idle when the core answers but no browser runs (no more endless warming up)", () => {
+    expect(browserStatus(null, { ...state, running: false, profiles: [profile] })).toMatchObject({ kind: "idle", value: "Idle" });
+  });
+
+  test("running when any profile browser is up", () => {
+    expect(browserStatus(null, { ...state, running: false, profiles: [{ ...profile, browserRunning: true }] })).toMatchObject({ kind: "running" });
+  });
+
+  test("crashed names the profile and reason", () => {
+    const crashed = browserStatus(null, { ...state, running: false, profiles: [{ ...profile, browserError: { at: 1, reason: "browser_disconnected" } }] });
+    expect(crashed).toMatchObject({ kind: "crashed", value: "Crashed", label: "work" });
+    expect(crashed.title).toContain("work: browser_disconnected");
+    expect(browserStatus(null, { ...state, running: false, browserError: "browser_died" }).title).toContain("shared browser: browser_died");
+  });
+
+  test("offline when the core can't be reached", () => {
+    expect(browserStatus("Access key required", state)).toMatchObject({ kind: "offline", label: "Access key required" });
   });
 });

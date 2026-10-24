@@ -1,9 +1,18 @@
+import { useState } from "react";
 import type { Profile } from "../types.ts";
+
+type Props = {
+  profiles: Profile[];
+  onDelete?: (name: string) => void;
+  /** Resolves true once the profile exists, so the field can be cleared. */
+  onCreate?: (name: string) => Promise<boolean>;
+};
 
 // Global browser profiles: each has its own fingerprint, cookies and history.
 // Burners are wiped by the core after a period without use.
-export function ProfileList({ profiles, onDelete }: { profiles: Profile[]; onDelete?: (name: string) => void }) {
-  if (profiles.length === 0) return null;
+export function ProfileList({ profiles, onDelete, onCreate }: Props) {
+  const [name, setName] = useState("");
+  if (profiles.length === 0 && !onCreate) return null;
   return (
     <section className="tab-section">
       <h3 className="section-heading">Profiles</h3>
@@ -18,6 +27,16 @@ export function ProfileList({ profiles, onDelete }: { profiles: Profile[]; onDel
           </li>
         ))}
       </ul>
+      {onCreate && (
+        <form id="profile-create" className="profile-create" onSubmit={(event) => {
+          event.preventDefault();
+          const trimmed = name.trim();
+          if (trimmed) void onCreate(trimmed).then((ok) => { if (ok) setName(""); });
+        }}>
+          <input aria-label="New profile name" placeholder="new-profile-name" value={name} maxLength={64} pattern="[a-zA-Z0-9][a-zA-Z0-9_.\-]*" spellCheck={false} onChange={(event) => setName(event.target.value)} />
+          <button type="submit" className="profile-delete" disabled={!name.trim()}>Create profile</button>
+        </form>
+      )}
     </section>
   );
 }

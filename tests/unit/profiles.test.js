@@ -150,6 +150,7 @@ describe('profile runtimes', () => {
     });
     await expect(runtimes.ensure({ id: 'a' })).rejects.toThrow('boom');
     expect(runtimes.has('a')).toBe(false);
+    expect(runtimes.failure('a')).toMatchObject({ reason: 'launch_failed: boom' });
   });
 
   test('a browser that dies frees its slot without waiting for the next request', async () => {
@@ -162,6 +163,21 @@ describe('profile runtimes', () => {
     await Promise.resolve(); await Promise.resolve();
     expect(runtimes.has('a')).toBe(false);
     expect(close).toHaveBeenCalledWith(expect.anything(), 'browser_disconnected');
+    // Reported as a crash until the next good launch.
+    expect(runtimes.failure('a')).toMatchObject({ reason: 'browser_disconnected' });
+    await runtimes.ensure({ id: 'a' });
+    expect(runtimes.failure('a')).toBeNull();
+  });
+
+  test('intentional closes are not failures, and forget clears one', async () => {
+    const runtimes = createProfileRuntimes({ launch: async () => ({ browser: { isConnected: () => true } }), close: async () => {}, maxBrowsers: 1, idleMs: 0 });
+    await runtimes.ensure({ id: 'a' });
+    await runtimes.close('a', 'idle_shutdown');
+    expect(runtimes.failure('a')).toBeNull();
+    const failing = createProfileRuntimes({ launch: async () => { throw new Error('x'); }, close: async () => {}, maxBrowsers: 1, idleMs: 0 });
+    await failing.ensure({ id: 'b' }).catch(() => {});
+    failing.forget('b');
+    expect(failing.failure('b')).toBeNull();
   });
 
   test('relaunches a disconnected browser', async () => {

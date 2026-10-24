@@ -23,6 +23,9 @@ export const containerConfig = {
   corePort: port(process.env.BWL_INTERNAL_PORT, 9378),
   coreHost: "127.0.0.1",
   publicAccessKey,
+  // MCP URL handed to agents in the dashboard's copy prompt. Empty: derived
+  // from the host the dashboard was opened at plus mcpPort.
+  publicMcpUrl: (process.env.BWL_PUBLIC_MCP_URL || "").trim(),
   internalAccessKey,
   apiKey: process.env.BWL_API_KEY || "",
   adminKey: process.env.BWL_ADMIN_KEY || "",

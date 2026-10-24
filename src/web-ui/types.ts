@@ -4,8 +4,10 @@ export type Tab = { tabId: string; sessionKey: string; url: string; title: strin
 export type ClosedRecord = Tab & { userId: string; closedAt: number; reason: string; profile?: string | null };
 /** `profile` is set when the session belongs to a global browser profile. */
 export type Session = { userId: string; lastAccess: string; tabs: Tab[]; profile?: string | null };
-export type Profile = { id: string; name: string; kind: "named" | "burner"; createdAt: number; lastUsedAt: number; userAgent: string | null; browserRunning: boolean; tabs: number; default?: boolean };
-export type State = { running: boolean; generatedAt: string; sessions: Session[]; closedTabs?: ClosedRecord[]; profiles?: Profile[] };
+export type Profile = { id: string; name: string; kind: "named" | "burner"; createdAt: number; lastUsedAt: number; userAgent: string | null; browserRunning: boolean; tabs: number; default?: boolean;
+  /** Last unexpected stop (crash, kill, failed launch) since its last good launch. */
+  browserError?: { at: number; reason: string } | null };
+export type State = { running: boolean; browserError?: string | null; generatedAt: string; sessions: Session[]; closedTabs?: ClosedRecord[]; profiles?: Profile[] };
 export type TabRef = { session: Session; tab: Tab };
 export type ClosedEntry = TabRef & { closedAt: number; reason?: string };
 

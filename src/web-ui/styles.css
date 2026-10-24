@@ -60,14 +60,15 @@ header { min-height: 88px; padding: 20px 32px; display: flex; align-items: cente
 h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
 .eyebrow { margin: 0 0 4px; color: var(--accent-text); font-size: 11px; letter-spacing: .2em; font-weight: 800; text-transform: uppercase; }
 .status-wrap { display: flex; align-items: center; gap: 10px; color: var(--muted-strong); font-size: 13px; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; background: #f2b84b; box-shadow: 0 0 12px currentColor; }
-.status-dot.online { background: var(--accent); }
 button { font: inherit; color: inherit; }
-#auth-button, .theme-picker, .back-button { border: 1px solid var(--border); border-radius: 999px; color: var(--text); background: var(--surface-soft); }
+#auth-button, .back-button { border: 1px solid var(--border); border-radius: 999px; color: var(--text); background: var(--surface-soft); }
 #auth-button { padding: 8px 13px; cursor: pointer; }
-.theme-picker { margin-left: 12px; padding: 5px 7px 5px 11px; display: flex; align-items: center; gap: 7px; }
-.theme-picker > span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
-.theme-picker select { border: 0; color: var(--text); background: transparent; font: inherit; cursor: pointer; outline: none; }
+.icon-button { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--border); border-radius: 50%; background: var(--surface-soft); color: var(--muted-strong); cursor: pointer; transition: color .15s, border-color .15s, transform .15s; }
+.icon-button:hover { color: var(--accent-text); border-color: var(--accent); }
+.icon-button:active { transform: scale(.9); }
+.icon-button .icon { width: 17px; height: 17px; }
+.theme-icon { display: grid; animation: theme-spin .35s cubic-bezier(.3, 1.4, .5, 1); }
+@keyframes theme-spin { from { opacity: 0; transform: rotate(-90deg) scale(.6); } }
 main { padding: 28px 32px 56px; max-width: 1800px; margin: auto; }
 
 /* --- Summary strip --- */
@@ -75,6 +76,20 @@ main { padding: 28px 32px 56px; max-width: 1800px; margin: auto; }
 .summary div { min-width: 126px; padding: 14px 17px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); display: flex; flex-direction: column; }
 .summary strong { font-size: 22px; font-weight: 700; }
 .summary span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
+.summary-status strong { display: flex; align-items: center; gap: 9px; }
+.summary-status > span { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-dot { position: relative; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.summary-status.running .status-dot { background: #2fbf71; box-shadow: 0 0 10px #2fbf7199; }
+.summary-status.running .status-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: status-ping 1.8s ease-out infinite; }
+.summary-status.idle .status-dot { background: var(--muted); }
+.summary-status.crashed .status-dot, .summary-status.offline .status-dot { background: #e5484d; box-shadow: 0 0 10px #e5484d99; }
+.summary-status.crashed strong, .summary-status.offline strong { color: #e5484d; }
+.summary-status.crashed, .summary-status.offline { border-color: color-mix(in srgb, #e5484d 45%, var(--border)); }
+@keyframes status-ping { to { transform: scale(2.6); opacity: 0; } }
+
+/* --- Toast (one-off messages) --- */
+.toast { position: fixed; right: 20px; bottom: 20px; z-index: 30; max-width: min(420px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 13px; box-shadow: 0 12px 34px var(--shadow); animation: toast-in .25s cubic-bezier(.2, 1.2, .4, 1); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px); } }
 
 /* --- Section headings (Open / Closed) --- */
 .tab-section { margin-bottom: 30px; }
@@ -161,7 +176,6 @@ code { color: var(--accent-text); }
   header { align-items: flex-start; gap: 14px; flex-direction: column; }
   header, main { padding-left: 16px; padding-right: 16px; }
   .status-wrap { width: 100%; flex-wrap: wrap; }
-  .theme-picker { margin-left: auto; }
   .summary div { min-width: 0; flex: 1; }
   .hint { display: none; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
@@ -181,3 +195,70 @@ code { color: var(--accent-text); }
 #lifetime-status, #navigation-error { padding: 8px 16px; margin: 0; font-size: 13px; }
 #lifetime-status { color: var(--muted-strong); }
 #navigation-error { color: #e5484d; }
+.profile-create { display: flex; gap: 8px; margin-top: 10px; font-size: 12px; }
+.profile-create input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text); font: 12px ui-monospace, monospace; outline: none; transition: border-color .15s, box-shadow .15s; }
+.profile-create input::placeholder { color: var(--muted); }
+.profile-create input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.profile-create input:user-invalid { border-color: #e5484d; }
+.profile-create input { flex: 1; min-width: 0; max-width: 320px; }
+.profile-create button:disabled { opacity: .5; cursor: default; }
+
+/* --- Connect your agent (header) --- */
+.connect-agent { display: flex; align-items: center; gap: 4px; margin-right: 8px; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-soft); }
+.connect-profile { display: flex; align-items: center; gap: 5px; padding: 0 4px 0 10px; color: var(--muted); cursor: pointer; }
+.connect-profile .icon { width: 14px; height: 14px; }
+.connect-profile select { max-width: 120px; border: 0; background: transparent; color: var(--text); font: 12px ui-monospace, monospace; cursor: pointer; outline: none; }
+.connect-profile:focus-within { color: var(--accent-text); }
+
+.connect-button { --glow: color-mix(in srgb, var(--accent) 45%, transparent); position: relative; overflow: hidden; isolation: isolate; padding: 7px 15px; border: 0; border-radius: 999px; color: #fff; font-size: 12.5px; font-weight: 650; letter-spacing: .01em; cursor: pointer;
+  background: linear-gradient(120deg, var(--accent), #b44cf0 55%, var(--accent)); background-size: 200% 100%; box-shadow: 0 1px 0 #fff3 inset, 0 4px 14px var(--glow);
+  transition: transform .18s cubic-bezier(.3, 1.6, .5, 1), box-shadow .2s, background-position .6s; }
+/* Shine that sweeps across on hover. */
+.connect-button::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(105deg, transparent 35%, #fff6 50%, transparent 65%); transform: translateX(-120%); transition: transform .7s; }
+.connect-button:hover { transform: translateY(-1px); background-position: 100% 0; box-shadow: 0 1px 0 #fff3 inset, 0 8px 22px var(--glow), 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.connect-button:hover::before { transform: translateX(120%); }
+.connect-button:active { transform: scale(.95); transition-duration: .08s; }
+.connect-button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.connect-button[data-state="copied"] { animation: connect-pop .45s cubic-bezier(.3, 1.6, .5, 1); box-shadow: 0 0 0 0 var(--glow); }
+.connect-button[data-state="copied"]::after { content: ""; position: absolute; inset: 0; border-radius: inherit; animation: connect-ring .8s ease-out; pointer-events: none; }
+.connect-button[data-state="failed"] { background: linear-gradient(120deg, #c2414b, #e0713c); }
+@keyframes connect-pop { 40% { transform: scale(1.07); } 100% { transform: scale(1); } }
+@keyframes connect-ring { from { box-shadow: 0 0 0 0 var(--glow); } to { box-shadow: 0 0 0 14px transparent; } }
+.connect-ripple { position: absolute; z-index: -1; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #fff8; pointer-events: none; animation: connect-ripple .6s ease-out forwards; }
+@keyframes connect-ripple { to { transform: scale(22); opacity: 0; } }
+
+/* Every label sits in the same cell; only the active one shows, so the width never changes. */
+.connect-labels { display: grid; justify-items: center; }
+.connect-labels > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .25s cubic-bezier(.3, 1.4, .5, 1); }
+.connect-labels .icon { width: 14px; height: 14px; stroke-width: 3; }
+[data-state="idle"] > .connect-labels > [data-label="idle"],
+[data-state="copied"] > .connect-labels > [data-label="copied"],
+[data-state="failed"] > .connect-labels > [data-label="failed"] { opacity: 1; transform: none; }
+/* Hover swaps "Connect your agent" for "Click to copy prompt": old label slides up, new one in from below. */
+.connect-button[data-state="idle"]:hover > .connect-labels > [data-label="idle"] { opacity: 0; transform: translateY(-6px); }
+.connect-button[data-state="idle"]:hover > .connect-labels > [data-label="hover"] { opacity: 1; transform: none; }
+[data-state="copied"] > .connect-labels > [data-label="idle"] { transform: translateY(-6px); }
+
+.connect-preview { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; transition: color .15s, background .15s, transform .15s; }
+.connect-preview .icon { width: 15px; height: 15px; }
+.connect-preview:hover { color: var(--accent-text); background: var(--surface-pill); transform: scale(1.08); }
+.connect-preview:active { transform: scale(.92); }
+
+/* --- Prompt preview popup --- */
+.prompt-dialog { width: min(760px, calc(100vw - 32px)); max-height: min(80vh, 760px); padding: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: 0 24px 70px var(--shadow); }
+.prompt-dialog[open] { display: flex; overflow: hidden; animation: dialog-in .22s cubic-bezier(.2, 1.2, .4, 1); }
+.prompt-dialog::backdrop { background: color-mix(in srgb, var(--page) 55%, transparent); backdrop-filter: blur(6px); }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(10px) scale(.97); } }
+.prompt-dialog-body { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
+.prompt-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.prompt-dialog-head h2 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.prompt-dialog-close { width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface-soft); color: var(--muted-strong); font-size: 18px; line-height: 1; cursor: pointer; transition: transform .15s, color .15s; }
+.prompt-dialog-close:hover { color: var(--accent-text); transform: rotate(90deg); }
+.agent-prompt-preview { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); color: var(--text); font: 11.5px/1.55 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.prompt-dialog-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.prompt-dialog-url { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font: 11px ui-monospace, monospace; }
+.prompt-dialog-copy { padding: 8px 16px; border: 1px solid var(--accent); border-radius: 999px; background: var(--surface-soft); color: var(--accent-text); font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s, color .15s, transform .12s; }
+.prompt-dialog-copy:hover { background: var(--accent); color: #fff; }
+.prompt-dialog-copy:active { transform: scale(.95); }
+
+@media (prefers-reduced-motion: reduce) { .status-dot::after, .theme-icon, .toast, .connect-agent *, .connect-agent *::before, .connect-agent *::after, .prompt-dialog { animation: none !important; transition: none !important; } }

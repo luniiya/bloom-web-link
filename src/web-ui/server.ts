@@ -1,4 +1,5 @@
 import { selectedText } from "./clipboard.ts";
+import { defaultMcpUrl } from "./agent-prompt.ts";
 import type { ContainerConfig } from "../config.ts";
 import { internalHeaders, isAuthorized, json, unauthorized } from "../http.ts";
 
@@ -27,7 +28,12 @@ export async function startWebUi(config: ContainerConfig): Promise<Bun.Server> {
     port: config.webPort,
     async fetch(request) {
       const url = new URL(request.url);
-      if (url.pathname === "/api/config") return json({ authRequired: !!config.publicAccessKey });
+      if (url.pathname === "/api/config") {
+        // Behind a TLS proxy the request itself is plain http; trust its proto header.
+        const protocol = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https" ? "https:" : url.protocol;
+        const mcpUrl = config.publicMcpUrl || defaultMcpUrl({ protocol, hostname: url.hostname }, config.mcpPort);
+        return json({ authRequired: !!config.publicAccessKey, mcpUrl });
+      }
       if (url.pathname.startsWith("/api/") && !isAuthorized(request, config)) return unauthorized();
       if (url.pathname === "/api/state") return coreFetch(config, "/dashboard/state");
       if (url.pathname === "/api/lifetime" && request.method === "POST") {
@@ -44,6 +50,12 @@ export async function startWebUi(config: ContainerConfig): Promise<Bun.Server> {
         const input = await request.json() as { userId?: string; url?: string; sessionKey?: string };
         if (!input.userId || !input.url || !/^https?:\/\//i.test(input.url)) return json({ error: "userId and an http(s) URL required" }, 400);
         return coreFetch(config, "/tabs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: input.userId, sessionKey: input.sessionKey || "default", url: input.url }) });
+      }
+      if (url.pathname === "/api/profiles/create" && request.method === "POST") {
+        const input = await request.json() as { name?: string; burner?: boolean };
+        if (input.name !== undefined && typeof input.name !== "string") return json({ error: "name must be a string" }, 400);
+        if (!input.name && input.burner !== true) return json({ error: "name is required unless burner is true" }, 400);
+        return coreFetch(config, "/profiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: input.name, burner: input.burner === true }) });
       }
       if (url.pathname === "/api/profiles/delete" && request.method === "POST") {
         const input = await request.json() as { profile?: string };

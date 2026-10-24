@@ -7,6 +7,7 @@ import { applyTheme, savedTheme, type Theme } from "../theme.ts";
 import type { ClosedEntry, State, TabRef } from "../types.ts";
 import { DetailView } from "./DetailView.tsx";
 import { GridView } from "./GridView.tsx";
+import type { ConnectInfo } from "./AgentPrompt.tsx";
 import { Header } from "./Header.tsx";
 import { useActivity } from "./useActivity.ts";
 
@@ -18,10 +19,14 @@ const POLL_MS = 3_000;
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseRoute());
   const [view, setView] = useState<View | null>(null);
-  const [status, setStatus] = useState("Connecting…");
-  const [online, setOnline] = useState(false);
+  // Connection problem, shown in the summary strip; null once the core answers.
+  const [connError, setConnError] = useState<string | null>("Connecting…");
+  // One-off messages (profile created, fullscreen unavailable, ...), shown as a toast.
+  const [notice, setNotice] = useState<{ id: number; text: string } | null>(null);
+  const showNotice = useCallback((text: string) => setNotice({ id: Date.now(), text }), []);
   const [theme, setTheme] = useState<Theme>(() => savedTheme());
   const [authHidden, setAuthHidden] = useState(false);
+  const [connect, setConnect] = useState<ConnectInfo | null>(null);
   const tracker = useRef<ClosureTracker>(null);
   tracker.current ??= new ClosureTracker(dropShot);
   const refreshing = useRef(false);
@@ -42,11 +47,9 @@ export function App() {
       const state = await response.json() as State;
       const open = tracker.current!.track(state);
       setView({ state, open: [...open.values()], closed: tracker.current!.sorted() });
-      setStatus(state.running ? "Browser online" : "Browser warming up");
-      setOnline(state.running);
+      setConnError(null);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Disconnected");
-      setOnline(false);
+      setConnError(error instanceof Error ? error.message : "Disconnected");
     } finally {
       refreshing.current = false;
     }
@@ -64,8 +67,9 @@ export function App() {
     void (async () => {
       try {
         const response = await fetch("/api/config");
-        const config = await response.json() as { authRequired?: boolean };
+        const config = await response.json() as { authRequired?: boolean; mcpUrl?: string };
         setAuthHidden(!config.authRequired);
+        setConnect({ authRequired: !!config.authRequired, mcpUrl: config.mcpUrl || `http://${location.hostname}:9377/mcp` });
       } catch {
         setAuthHidden(true);
       }
@@ -93,6 +97,12 @@ export function App() {
     if (tab) queueScreenshot(shown.userId, shown.tabId, true);
   }, [view, detailKey]);
 
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
   function changeTheme(next: Theme) {
     applyTheme(next);
     setTheme(next);
@@ -101,8 +111,16 @@ export function App() {
   async function deleteProfile(name: string) {
     if (!confirm(`Delete profile "${name}"? Its tabs close and its fingerprint, cookies and history are erased.`)) return;
     const response = await fetch("/api/profiles/delete", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ profile: name }) }).catch(() => null);
-    setStatus(response?.ok ? `Deleted profile ${name}` : `Could not delete profile ${name}`);
+    showNotice(response?.ok ? `Deleted profile ${name}` : `Could not delete profile ${name}`);
     void refresh();
+  }
+
+  async function createProfile(name: string): Promise<boolean> {
+    const response = await fetch("/api/profiles/create", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ name }) }).catch(() => null);
+    const body = await response?.json().catch(() => null) as { error?: string } | null;
+    showNotice(response?.ok ? `Created profile ${name}` : `Could not create profile ${name}${body?.error ? `: ${body.error}` : ""}`);
+    void refresh();
+    return !!response?.ok;
   }
 
   function askForKey() {
@@ -114,9 +132,9 @@ export function App() {
 
   return (
     <>
-      <Header status={status} online={online} theme={theme} onThemeChange={changeTheme} authHidden={authHidden} onAuth={askForKey} />
+      <Header theme={theme} onThemeChange={changeTheme} authHidden={authHidden} onAuth={askForKey} connect={connect} profiles={(view?.state.profiles ?? []).map((p) => p.name)} />
       <main>
-        <GridView hidden={shown.kind !== "grid"} state={view?.state ?? null} open={view?.open ?? []} closed={view?.closed ?? []} onDeleteProfile={(name) => void deleteProfile(name)} />
+        <GridView hidden={shown.kind !== "grid"} connError={connError} state={view?.state ?? null} open={view?.open ?? []} closed={view?.closed ?? []} onDeleteProfile={(name) => void deleteProfile(name)} onCreateProfile={createProfile} />
         <section id="detail-view" hidden={shown.kind !== "detail"}>
           {view && shown.kind === "detail" && (
             <DetailView
@@ -126,12 +144,13 @@ export function App() {
               last={tracker.current.closed.get(detailKey)}
               activity={activity.entries}
               activityListRef={activity.listRef}
-              onStatus={setStatus}
+              onStatus={showNotice}
               refresh={refresh}
             />
           )}
         </section>
       </main>
+      {notice && <div key={notice.id} className="toast" role="status">{notice.text}</div>}
     </>
   );
 }

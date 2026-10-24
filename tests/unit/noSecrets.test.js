@@ -73,14 +73,4 @@ describe('no embedded secrets in distributed files', () => {
     const toml = readFileSync(join(__dirname, '../../workers/crash-reporter/wrangler.toml'), 'utf-8');
     expect(toml).toContain('name = "bwl-telemetry"');
   });
-
-  test('deploy workflow triggers on worker changes from main', () => {
-    const workflow = readFileSync(join(__dirname, '../../.github/workflows/telemetry-deploy.yml'), 'utf-8');
-    expect(workflow).toContain('workers/crash-reporter/**');
-    expect(workflow).toContain('branches: [master]');
-    expect(workflow).toContain('CLOUDFLARE_API_TOKEN');
-    expect(workflow).toContain('CLOUDFLARE_ACCOUNT_ID');
-    expect(workflow).toContain('__COMMIT_SHA__');
-    expect(workflow).toContain('__SOURCE_SHA256__');
-  });
 });

@@ -100,7 +100,7 @@ describe("auth", () => {
   });
 
   test("config and the page itself stay public", async () => {
-    expect(await (await fetch(url(secured, "/api/config"))).json()).toEqual({ authRequired: true });
+    expect(await (await fetch(url(secured, "/api/config"))).json()).toEqual({ authRequired: true, mcpUrl: `http://127.0.0.1:${containerConfig.mcpPort}/mcp` });
     expect((await fetch(url(secured, "/"))).status).toBe(200);
   });
 });
@@ -149,5 +149,33 @@ describe("/api/profiles/delete", () => {
   test("requires a profile and authorization", async () => {
     expect((await post(open, "/api/profiles/delete", {})).status).toBe(400);
     expect((await post(secured, "/api/profiles/delete", { profile: "x" })).status).toBe(401);
+  });
+});
+
+describe("/api/config mcpUrl", () => {
+  test("follows the dashboard host, honours a TLS proxy, and can be overridden", async () => {
+    const viaProxy = await fetch(url(open, "/api/config"), { headers: { "X-Forwarded-Proto": "https" } });
+    expect((await viaProxy.json() as { mcpUrl: string }).mcpUrl).toBe(`https://127.0.0.1:${containerConfig.mcpPort}/mcp`);
+    const pinned = await startWebUi({ ...baseConfig, publicAccessKey: "", publicMcpUrl: "https://bwl.example/mcp" });
+    try {
+      expect((await (await fetch(url(pinned, "/api/config"))).json() as { mcpUrl: string }).mcpUrl).toBe("https://bwl.example/mcp");
+    } finally { pinned.stop(true); }
+  });
+});
+
+describe("/api/profiles/create", () => {
+  test("creates a named or burner profile in the core", async () => {
+    await post(open, "/api/profiles/create", { name: "shopping" });
+    expect(lastSeen()).toMatchObject({ method: "POST", path: "/profiles", body: { name: "shopping", burner: false } });
+    await post(open, "/api/profiles/create", { burner: true });
+    expect(lastSeen()).toMatchObject({ method: "POST", path: "/profiles", body: { burner: true } });
+  });
+
+  test("requires a name (or burner) and authorization", async () => {
+    const count = seen.length;
+    expect((await post(open, "/api/profiles/create", {})).status).toBe(400);
+    expect((await post(open, "/api/profiles/create", { name: 5 })).status).toBe(400);
+    expect((await post(secured, "/api/profiles/create", { name: "x" })).status).toBe(401);
+    expect(seen.length).toBe(count);
   });
 });

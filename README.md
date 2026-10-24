@@ -107,6 +107,7 @@ Set these in the environment (or a `.env` file next to `compose.yaml`):
 | `BWL_ADMIN_KEY` | _unset_ | Secret required for `POST /stop` |
 | `BWL_MCP_PORT` | `9377` | MCP + REST port |
 | `BWL_WEB_PORT` | `6080` | Dashboard port |
+| `BWL_PUBLIC_MCP_URL` | _derived_ | MCP URL shown in the dashboard's "Connect your agent" prompt. Defaults to the dashboard's host with `BWL_MCP_PORT`; set it when agents reach bwl through a proxy or another hostname |
 | `BWL_LOCALE` / `BWL_TIMEZONE` | _auto_ | Browser locale and timezone |
 | `BWL_CRASH_REPORT_ENABLED` | `false` | Anonymized crash reporting |
 | `BWL_MAX_PROFILE_BROWSERS` | `4` | Profile browsers allowed to run at once |

@@ -7132,7 +7132,7 @@ function profileSummary(profile) {
   const session = sessions.get(userId);
   let tabs = 0;
   if (session) for (const group of session.tabGroups.values()) tabs += group.size;
-  return { ...profileRegistry.describe(profile), userId, browserRunning: profileRuntimes.has(profile.id), tabs };
+  return { ...profileRegistry.describe(profile), userId, browserRunning: profileRuntimes.has(profile.id), browserError: profileRuntimes.failure(profile.id), tabs };
 }
 
 // Profile errors with a statusCode are expected caller errors, not internal ones.
@@ -7155,6 +7155,7 @@ async function deleteProfile(profile, reason) {
   if (pluginCtx.resetStorageState) await pluginCtx.resetStorageState(userId, { reason, removeDir: true });
   else await destroySession(userId, { reason });
   await profileRuntimes.close(profile.id, reason);
+  profileRuntimes.forget(profile.id);
   tabHistory.removeUser(userId);
   profileRegistry.remove(profile.id);
   log('info', 'profile deleted', { profileId: profile.id, name: profile.name, kind: profile.kind, reason });
@@ -7578,6 +7579,8 @@ app.get('/dashboard/state', async (_req, res) => {
   };
   res.json({
     running,
+    // Why the shared browser stopped, when that wasn't intentional (crash, kill).
+    browserError: !running && _lastBrowserStopReason && !INTENTIONAL_STOP_REASONS.has(_lastBrowserStopReason) ? _lastBrowserStopReason : null,
     generatedAt: new Date().toISOString(),
     sessions: dashboardSessions,
     closedTabs: tabHistory.list().map(({ text, ...entry }) => {
