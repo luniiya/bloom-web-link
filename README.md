@@ -54,7 +54,14 @@ Prefer to wire it up by hand? Point any MCP client that speaks Streamable HTTP a
 claude mcp add --transport http bloom-web-link http://localhost:9377/mcp
 ```
 
+```toml
+# Codex: ~/.codex/config.toml
+[mcp_servers.bloom-web-link]
+url = "http://localhost:9377/mcp"
+```
+
 ```json
+// Cursor, .mcp.json and most other clients
 {
   "mcpServers": {
     "bloom-web-link": {
