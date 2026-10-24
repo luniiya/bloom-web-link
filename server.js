@@ -4,6 +4,7 @@ import { createReplyWaitHandler } from './lib/reply-handler.js';
 import path from 'node:path';
 import { Camoufox, launchOptions } from 'camoufox-js';
 import { VirtualDisplay } from 'camoufox-js/dist/virtdisplay.js';
+import { generateFingerprint } from 'camoufox-js/dist/fingerprints.js';
 import { firefox } from 'playwright-core';
 import express from 'express';
 import crypto from 'crypto';
@@ -58,7 +59,9 @@ import { initSentry, captureException as sentryCaptureException, setupExpressErr
 import { prepareExternalCamoufoxExecutable } from './lib/camoufox-executable.js';
 import { createVirtualDisplayRegistry } from './lib/plugin-capabilities.js';
 import { killProcessIds } from './lib/browser-processes.js';
-import { snapshotOwnedBrowserProcesses, survivingOwnedBrowserProcesses, profilePathsFromProcessSnapshot } from './lib/process-ownership.js';
+import { snapshotOwnedBrowserProcesses, survivingOwnedBrowserProcesses, profilePathsFromProcessSnapshot, excludeProfileBrowsers, snapshotRssMb, PROFILE_ENV_KEY } from './lib/process-ownership.js';
+import { createProfileRegistry, DEFAULT_PROFILE_NAME, profileUserId, profileIdFromUserId, camoufoxConfigFromEnv } from './lib/profiles.js';
+import { createProfileRuntimes } from './lib/profile-runtimes.js';
 import { COOKIE_BANNER_FIREFOX_PREFS, dismissConsentDialogs as dismissKnownConsentDialogs } from './lib/consent.js';
 import { resolveExtraAddons } from './lib/extra-addons.js';
 import { createPageReady } from './lib/page-ready.js';
@@ -226,6 +229,39 @@ app.use('/tabs/:tabId', fly.replayMiddleware(log));
 // dedicated keys (cookie import -> BWL_API_KEY, /stop -> BWL_ADMIN_KEY)
 // so each key gates a distinct surface. When unset, behavior is unchanged.
 app.use(accessKeyMiddleware(CONFIG));
+
+// Profiles are global: any caller may drive a tab that lives in a profile
+// session (or read a closed profile tab's history). Requests naming another
+// userId are re-pointed at the owning profile session.
+const evaluateJsonParser = express.json({ limit: CONFIG.evaluateMaxBodySize });
+function profileOwnerOfTab(tabId) {
+  for (const [userId, session] of sessions) {
+    if (session.profileId && findTab(session, tabId)) return userId;
+  }
+  const closed = tabHistory.list().findLast(e => e.tabId === tabId && profileIdFromUserId(e.userId));
+  return closed?.userId || null;
+}
+app.use('/tabs/:tabId', (req, res, next) => {
+  const route = () => {
+    const tabId = req.params.tabId;
+    const callerId = req.body?.userId ?? req.query?.userId;
+    if (callerId === undefined || callerId === null) return next();
+    const own = sessions.get(normalizeUserId(callerId));
+    if (own && findTab(own, tabId)) return next();
+    const owner = profileOwnerOfTab(tabId);
+    if (!owner || owner === normalizeUserId(callerId)) return next();
+    if (req.body && typeof req.body === 'object' && req.body.userId !== undefined) req.body.userId = owner;
+    if (req.query?.userId !== undefined) {
+      Object.defineProperty(req, 'query', { value: { ...req.query, userId: owner }, configurable: true, writable: true, enumerable: true });
+    }
+    profileRegistry.touch(profileIdFromUserId(owner));
+    next();
+  };
+  // /evaluate skips the global parser for its larger limit; parse it here so
+  // the userId can be re-pointed. The route's own parser then sees a consumed body.
+  if (req.method === 'POST' && req.body === undefined && req.path === '/evaluate') return evaluateJsonParser(req, res, route);
+  route();
+});
 
 const ALLOWED_URL_SCHEMES = ['http:', 'https:'];
 
@@ -747,11 +783,17 @@ let browserWarmRetryTimer = null;
 let _lastBrowserStopReason = null;
 const INTENTIONAL_STOP_REASONS = new Set(['idle_shutdown', 'admin_stop']);
 
+function defaultBrowserSessionCount() {
+  let count = 0;
+  for (const session of sessions.values()) if (!session.profileId) count++;
+  return count;
+}
+
 function scheduleBrowserIdleShutdown() {
-  if (browserIdleTimer || sessions.size > 0 || !browser || BROWSER_IDLE_TIMEOUT_MS <= 0) return;
+  if (browserIdleTimer || defaultBrowserSessionCount() > 0 || !browser || BROWSER_IDLE_TIMEOUT_MS <= 0) return;
   browserIdleTimer = setTimeout(async () => {
     browserIdleTimer = null;
-    if (sessions.size === 0 && browser) {
+    if (defaultBrowserSessionCount() === 0 && browser) {
       log('info', 'browser idle shutdown (no sessions)');
       await closeBrowserFully('idle_shutdown');
     }
@@ -873,7 +915,7 @@ async function restartBrowser(reason) {
   log('error', 'restarting browser', { reason, totalFailures });
   pluginEvents.emit('browser:restart', { reason });
   try {
-    await closeAllSessions(`browser_restart:${reason}`, { clearDownloads: true, clearLocks: true });
+    await closeAllSessions(`browser_restart:${reason}`, { clearDownloads: true, clearLocks: true, defaultBrowserOnly: true });
     userNavHealth.clear();
     await closeBrowserFully(`browser_restart:${reason}`);
     pluginEvents.emit('browser:closed', { reason });
@@ -1010,6 +1052,11 @@ async function closeBrowserFully(reason) {
   }
 }
 
+// Owned camoufox/Xvfb processes that belong to the default browser, not a profile.
+function defaultBrowserProcesses() {
+  return excludeProfileBrowsers(snapshotOwnedBrowserProcesses(process.pid), profileRuntimes.ownedPids());
+}
+
 async function _closeBrowserFullyImpl(reason) {
   const b = browser;
   if (!b) return;
@@ -1020,7 +1067,7 @@ async function _closeBrowserFullyImpl(reason) {
   // Capture ownership before Playwright closes and reparents its children.
   // Multiple scoped servers may share a host, so a later /proc name scan must
   // never treat another server's browser as one of our survivors.
-  const ownedBrowserProcesses = snapshotOwnedBrowserProcesses(process.pid);
+  const ownedBrowserProcesses = defaultBrowserProcesses();
   const preCloseFds = _countOpenFds();
   const preCloseHandles = _countActiveHandles();
 
@@ -1052,7 +1099,7 @@ async function _closeBrowserFullyImpl(reason) {
 
   // Clean up stale Firefox temp profiles (enable_cache: true accumulates data)
   try {
-    const cleaned = cleanupStaleFirefoxProfiles();
+    const cleaned = cleanupStaleFirefoxProfiles({ protectedPaths: profilePathsFromProcessSnapshot(snapshotOwnedBrowserProcesses(process.pid)) });
     if (cleaned.removed > 0) {
       log('info', 'cleaned stale firefox profiles after browser close', cleaned);
     }
@@ -1169,11 +1216,72 @@ async function buildLaunchOptionsWithGeoipFallback(baseOptions, attemptMeta) {
   }
 }
 
+function profileLaunchOptions(profile) {
+  const pinned = profile.pinnedConfig || {};
+  const vendor = pinned['webGl:vendor'];
+  const renderer = pinned['webGl:renderer'];
+  return {
+    fingerprint: profile.fingerprint,
+    config: { ...pinned },
+    // Same GPU as the pinned WebGL params, so the webgl2 pref matches too.
+    ...(vendor && renderer ? { webgl_config: [vendor, renderer] } : {}),
+    // The fingerprint was generated by camoufox-js itself, so its
+    // "custom fingerprint" leak warning is noise on every profile launch.
+    i_know_what_im_doing: true,
+  };
+}
+
+// camoufox-js downloads its default addons (uBlock) on first use by creating
+// the addon dir before extracting into it; a launch built concurrently sees
+// the empty dir and fails with "manifest.json is missing". Default and
+// profile browsers can launch together, so build options one at a time.
+let camoufoxOptionsQueue = Promise.resolve();
+function buildCamoufoxOptions(...args) {
+  const run = camoufoxOptionsQueue.then(() => buildCamoufoxOptionsNow(...args));
+  camoufoxOptionsQueue = run.catch(() => {});
+  return run;
+}
+
+async function buildCamoufoxOptionsNow({ hostOS, launchProxy, vdDisplay, useDesktopWindow, extraAddons, profile }, attemptMeta) {
+  const options = await buildLaunchOptionsWithGeoipFallback({
+    // camoufox-js writes DISPLAY into the env it's given, or into process.env
+    // when none is passed. Concurrent default/profile launches would then
+    // steal each other's display.
+    env: { ...process.env },
+    executable_path: getExternalCamoufoxLaunch()?.executablePath,
+    headless: vdDisplay ? false : !useDesktopWindow,
+    os: hostOS,
+    humanize: true,
+    enable_cache: true,
+    proxy: launchProxy,
+    geoip: !!launchProxy,
+    locale: launchLocale({ hasProxy: !!proxyPool, directIdentity: CONFIG.directIdentity }),
+    virtual_display: vdDisplay,
+    addons: extraAddons,
+    exclude_addons: CONFIG.disableDefaultAddons ? ['UBO'] : undefined,
+    firefox_user_prefs: CONFIG.cookieBannerHandlingEnabled ? { ...COOKIE_BANNER_FIREFOX_PREFS } : undefined,
+    // A profile reuses its stored fingerprint and the values pinned from its
+    // first launch, so it looks like the same machine every time.
+    ...(profile ? profileLaunchOptions(profile) : {}),
+  }, attemptMeta);
+  options.proxy = normalizePlaywrightProxy(options.proxy);
+  // Playwright's launcher defaults handleSIGTERM/SIGINT/SIGHUP to true,
+  // registering its own process signal handlers that send Browser.close
+  // straight to Firefox over its debug transport the instant a signal
+  // arrives -- independent of and racing ahead of our own gracefulShutdown()
+  // sequencing (including the persistence plugin's shutdown checkpoint).
+  // Disable them so gracefulShutdown() is the sole authority over shutdown.
+  options.handleSIGTERM = false;
+  options.handleSIGINT = false;
+  options.handleSIGHUP = false;
+  if (profile) options.env = { ...options.env, [PROFILE_ENV_KEY]: profile.id };
+  return options;
+}
+
 async function launchBrowserInstance() {
   const hostOS = getHostOS();
   const maxAttempts = proxyPool?.launchRetries ?? 1;
   let lastError = null;
-  const externalCamoufox = getExternalCamoufoxLaunch();
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const launchProxy = proxyPool
@@ -1218,34 +1326,13 @@ async function launchBrowserInstance() {
       const extraAddons = CONFIG.disableExtraAddons
         ? []
         : await resolveExtraAddons({ log });
-      const options = await buildLaunchOptionsWithGeoipFallback({
-        executable_path: externalCamoufox?.executablePath,
-        headless: useVirtualDisplay ? false : !useDesktopWindow,
-        os: hostOS,
-        humanize: true,
-        enable_cache: true,
-        proxy: launchProxy,
-        geoip: !!launchProxy,
-        locale: launchLocale({ hasProxy: !!proxyPool, directIdentity: CONFIG.directIdentity }),
-        virtual_display: vdDisplay,
-        addons: extraAddons,
-        exclude_addons: CONFIG.disableDefaultAddons ? ['UBO'] : undefined,
-        firefox_user_prefs: CONFIG.cookieBannerHandlingEnabled ? { ...COOKIE_BANNER_FIREFOX_PREFS } : undefined,
+      const options = await buildCamoufoxOptions({
+        hostOS, launchProxy, vdDisplay, useDesktopWindow, extraAddons,
       }, {
         attempt,
         proxyServer: launchProxy?.server || null,
         proxySession: launchProxy?.sessionId || null,
       });
-      options.proxy = normalizePlaywrightProxy(options.proxy);
-      // Playwright's launcher defaults handleSIGTERM/SIGINT/SIGHUP to true,
-      // registering its own process signal handlers that send Browser.close
-      // straight to Firefox over its debug transport the instant a signal
-      // arrives -- independent of and racing ahead of our own gracefulShutdown()
-      // sequencing (including the persistence plugin's shutdown checkpoint).
-      // Disable them so gracefulShutdown() is the sole authority over shutdown.
-      options.handleSIGTERM = false;
-      options.handleSIGINT = false;
-      options.handleSIGHUP = false;
       await pluginEvents.emitAsync('browser:launching', { options });
 
       candidateBrowser = await firefox.launch(options);
@@ -1308,6 +1395,126 @@ async function launchBrowserInstance() {
   throw lastError || new Error('Failed to launch a usable browser');
 }
 
+// --- Profile browsers: one Camoufox process per active profile ---
+const profileRegistry = createProfileRegistry({
+  file: path.join(CONFIG.profileDir, 'profiles.json'),
+  generateFingerprint: () => generateFingerprint(undefined, { operatingSystems: [getHostOS()] }),
+});
+profileRegistry.ensure(DEFAULT_PROFILE_NAME);
+
+const PROFILE_ADDON_SETTLE_MS = 2000;
+
+// Loads a local page several times (the wedge shows after ~4 loads) in a
+// throwaway context. data: URLs still load in a wedged browser, so this uses
+// the server's own /health over loopback.
+async function browserLoadsPages(b) {
+  let context = null;
+  try {
+    context = await b.newContext();
+    for (let i = 0; i < 6; i++) {
+      const page = await context.newPage();
+      await page.goto(`http://127.0.0.1:${PORT}/health?launch_probe=${i}`, { timeout: 5000 });
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message.split('\n')[0] };
+  } finally {
+    await context?.close().catch(() => {});
+  }
+}
+
+async function launchProfileBrowser(profile) {
+  const hostOS = getHostOS();
+  const useDesktopWindow = CONFIG.interactiveMode === 'desktop';
+  let localVirtualDisplay = null;
+  let vdDisplay;
+  if (os.platform() === 'linux' && !useDesktopWindow) {
+    try {
+      localVirtualDisplay = virtualDisplayRegistry.create();
+      vdDisplay = await localVirtualDisplay.get();
+    } catch (err) {
+      log('warn', 'xvfb not available for profile browser, falling back to headless', { profileId: profile.id, error: err.message });
+      localVirtualDisplay = null;
+      vdDisplay = undefined;
+    }
+  }
+  const launchProxy = proxyPool
+    ? proxyPool.getLaunchProxy(proxyPool.canRotateSessions ? `profile-${profile.id.replace(/-/g, '').slice(0, 12)}` : undefined)
+    : null;
+  try {
+    const extraAddons = CONFIG.disableExtraAddons ? [] : await resolveExtraAddons({ log });
+    // A Camoufox upgrade can drop config keys pinned under an older build; drop
+    // those rather than failing to launch.
+    const pinnedConfig = { ...profile.pinnedConfig };
+    let options;
+    for (;;) {
+      try {
+        options = await buildCamoufoxOptions(
+          { hostOS, launchProxy, vdDisplay, useDesktopWindow, extraAddons, profile: { ...profile, pinnedConfig } },
+          { profileId: profile.id },
+        );
+        break;
+      } catch (err) {
+        const unknown = /Unknown property (\S+) in config/.exec(err?.message || '')?.[1];
+        if (!unknown || !(unknown in pinnedConfig)) throw err;
+        delete pinnedConfig[unknown];
+      }
+    }
+    if (!profile.pinnedConfig) {
+      const resolved = camoufoxConfigFromEnv(options.env);
+      if (resolved) profileRegistry.pin(profile.id, resolved);
+      else log('warn', 'could not read resolved camoufox config; profile fingerprint noise will vary per launch', { profileId: profile.id });
+    }
+    await pluginEvents.emitAsync('browser:launching', { options, profileId: profile.id });
+    for (let attempt = 1; ; attempt++) {
+      const launched = await withTimeout(firefox.launch(options), proxyPool?.launchTimeoutMs ?? 60000, 'Profile browser launch');
+      if (extraAddons.length === 0) return { browser: launched, virtualDisplay: localVirtualDisplay };
+      // Page loads made while the extra addons (IDCAC) are still starting can
+      // wedge the browser: after ~4 loads every navigation hangs for good.
+      // There is no readiness signal, so wait, check that pages load, and
+      // relaunch with a longer wait if they don't.
+      await new Promise(r => setTimeout(r, PROFILE_ADDON_SETTLE_MS * attempt));
+      const check = await browserLoadsPages(launched);
+      if (check.ok) return { browser: launched, virtualDisplay: localVirtualDisplay };
+      await launched.close().catch(() => {});
+      if (attempt >= 3) throw new Error(`Profile browser launched but cannot load pages: ${check.error}`);
+      log('warn', 'profile browser cannot load pages after launch; relaunching', { profileId: profile.id, attempt, error: check.error });
+    }
+  } catch (err) {
+    if (localVirtualDisplay) localVirtualDisplay.kill();
+    throw err;
+  }
+}
+
+async function closeProfileBrowser({ browser: b, virtualDisplay: display }, reason) {
+  const pid = b.process?.()?.pid;
+  let closeTimer;
+  try {
+    await Promise.race([
+      b.close(),
+      new Promise((_, reject) => { closeTimer = setTimeout(() => reject(new Error('browser.close() timeout')), 10000); }),
+    ]);
+  } catch (err) {
+    log('warn', 'profile browser close failed or timed out', { reason, pid, error: err.message });
+  } finally {
+    clearTimeout(closeTimer);
+  }
+  if (pid) await _forceKillProcessTree(pid, reason);
+  if (display) display.kill();
+}
+
+const profileRuntimes = createProfileRuntimes({
+  launch: launchProfileBrowser,
+  close: closeProfileBrowser,
+  maxBrowsers: CONFIG.maxProfileBrowsers,
+  idleMs: BROWSER_IDLE_TIMEOUT_MS,
+  log,
+});
+
+function profileHasSessions(profileId) {
+  return sessions.has(profileUserId(profileId));
+}
+
 async function ensureBrowser() {
   clearBrowserIdleTimer();
   if (_browserClosePromise) {
@@ -1318,7 +1525,7 @@ async function ensureBrowser() {
     log('warn', 'browser disconnected, clearing dead sessions and relaunching', {
       deadSessions: sessions.size,
     });
-    await closeAllSessions('browser_disconnected', { clearDownloads: true, clearLocks: true });
+    await closeAllSessions('browser_disconnected', { clearDownloads: true, clearLocks: true, defaultBrowserOnly: true });
     await closeBrowserFully('browser_disconnected');
   }
   if (browser) return browser;
@@ -1386,13 +1593,14 @@ async function closeSession(userId, session, {
 
   await session.context.close().catch(() => {});
   if (sessions.get(key) === session) sessions.delete(key);
+  if (session.profileId) profileRuntimes.scheduleIdle(session.profileId, profileHasSessions(session.profileId));
   await pluginEvents.emitAsync('session:destroyed', { userId: key, reason });
 
   refreshActiveTabsGauge();
 }
 
-async function closeAllSessions(reason, { clearDownloads = true, clearLocks = true } = {}) {
-  const openSessions = Array.from(sessions.entries());
+async function closeAllSessions(reason, { clearDownloads = true, clearLocks = true, defaultBrowserOnly = false } = {}) {
+  const openSessions = Array.from(sessions.entries()).filter(([, session]) => !defaultBrowserOnly || !session.profileId);
   for (const [userId, session] of openSessions) {
     await closeSession(userId, session, { reason, clearDownloads, clearLocks });
   }
@@ -1444,7 +1652,13 @@ async function getSession(userId, { trace = false } = {}) {
           );
         }
       }
-      const b = await ensureBrowser();
+      const profileId = profileIdFromUserId(key);
+      let profile = null;
+      if (profileId) {
+        profile = profileRegistry.get(profileId);
+        if (!profile) throw Object.assign(new Error(`Unknown profile: ${profileId}`), { statusCode: 404, code: 'profile_not_found' });
+      }
+      const b = profile ? await profileRuntimes.ensure(profile) : await ensureBrowser();
       const contextOptions = {
         viewport: null,
         ...contextIdentityOptions({
@@ -1478,7 +1692,7 @@ async function getSession(userId, { trace = false } = {}) {
         }
       }
 
-      const created = { context, tabGroups: new Map(), pageLeases: new Set(), lastAccess: Date.now(), proxySessionId: sessionProxy?.sessionId || null, tracePath };
+      const created = { context, tabGroups: new Map(), pageLeases: new Set(), lastAccess: Date.now(), proxySessionId: sessionProxy?.sessionId || null, tracePath, profileId: profile?.id || null };
       sessions.set(key, created);
       await pluginEvents.emitAsync('session:created', { userId: key, context });
       log('info', 'session created', {
@@ -2029,7 +2243,7 @@ async function bwlPressureCleanup(options = {}) {
 
     refreshTabLockQueueDepth();
     refreshActiveTabsGauge();
-    if (sessions.size === 0) scheduleBrowserIdleShutdown();
+    scheduleBrowserIdleShutdown();
   }
 
   return {
@@ -2972,6 +3186,9 @@ app.post('/pressure/cleanup', async (req, res) => {
  *               trace:
  *                 type: boolean
  *                 description: Enable Playwright tracing for this session (screenshots, DOM snapshots, network). Must be set on first tab creation; cannot be added to an existing session.
+ *               profile:
+ *                 type: string
+ *                 description: Global profile (name or id) to open the tab in. "burner" creates a new burner profile. Defaults to the "main" profile.
  *     responses:
  *       200:
  *         description: Tab created.
@@ -3015,6 +3232,24 @@ app.post('/tabs', async (req, res) => {
   // must tear it down — the caller never receives its tabId.
   let pendingTab = null;
   try {
+    // Reject bad URLs before a browser or burner profile is spun up for them.
+    if (req.body?.url) {
+      const urlErr = validateUrl(req.body.url);
+      if (urlErr) return res.status(400).json({ error: urlErr });
+    }
+    // Tabs open in a global profile: the one named by `profile`, a fresh
+    // burner for "burner", or the default "main" profile.
+    let profile = null;
+    if (req.body) {
+      const requested = req.body.profile || DEFAULT_PROFILE_NAME;
+      profile = requested === 'burner'
+        ? profileRegistry.create({ burner: true })
+        : profileRegistry.get(requested);
+      if (!profile) return res.status(404).json({ error: `Unknown profile: ${requested}`, code: 'profile_not_found' });
+      if (requested === 'burner') log('info', 'profile created', { profileId: profile.id, name: profile.name, kind: profile.kind });
+      profileRegistry.touch(profile.id, 0);
+      req.body.userId = profileUserId(profile.id);
+    }
     const { userId, sessionKey, listItemId, url, trace } = req.body;
     // Accept both sessionKey (preferred) and listItemId (legacy) for backward compatibility
     const resolvedSessionKey = sessionKey || listItemId;
@@ -3076,8 +3311,6 @@ app.post('/tabs', async (req, res) => {
       refreshActiveTabsGauge();
       
       if (url) {
-        const urlErr = validateUrl(url);
-        if (urlErr) throw Object.assign(new Error(urlErr), { statusCode: 400 });
         tabState.lastRequestedUrl = url;
         try {
           const navigationResponse = await withPageLoadDuration('open_url', () => navigatePage(page, url));
@@ -3128,6 +3361,7 @@ app.post('/tabs', async (req, res) => {
         url: page.url(),
         httpStatus: tabState.lastNavigationHttpStatus,
         navigationOk: tabState.lastNavigationHttpStatus === null || tabState.lastNavigationHttpStatus < 400,
+        ...(profile ? { profile: profile.name, profileKind: profile.kind } : {}),
       };
     })(), requestTimeoutMs(), 'tab create');
 
@@ -3251,7 +3485,8 @@ app.post('/tabs/:tabId/navigate', async (req, res) => {
     session.lastAccess = Date.now();
 
     const result = await withUserLimit(userId, () => withTimeout((async () => {
-      await ensureBrowser();
+      // Profile tabs run on their own browser; don't spin up the default one.
+      if (!session.profileId) await ensureBrowser();
       const resolvedSessionKey = sessionKey || listItemId || found.listItemId || 'default';
       let tabState = found.tabState;
       tabState.toolCalls++; tabState.consecutiveTimeouts = 0; tabState.consecutiveFailures = 0;
@@ -3594,8 +3829,9 @@ app.post('/tabs/:tabId/navigate', async (req, res) => {
     if (failedTab) failedTab.tabState.navigationError = err.message;
     log('error', 'navigate failed', { reqId: req.reqId, tabId, error: err.message });
     const is400 = err.message && (err.message.startsWith('Blocked URL scheme') || err.message === 'url or macro required');
+    // Our own validation messages: safe to return, and safeError would redact them in production.
     if (is400) {
-      return res.status(400).json({ error: safeError(err) });
+      return res.status(400).json({ error: err.message });
     }
     // SSL certificate errors — site has a bad/self-signed cert. Non-retriable.
     const isSslError = err.message && (
@@ -6882,13 +7118,152 @@ app.delete('/sessions/:userId', async (req, res) => {
       await closeSession(userId, session, { reason: 'api_delete_session', clearDownloads: true, clearLocks: true });
       log('info', 'session closed', { userId });
     }
-    if (sessions.size === 0) scheduleBrowserIdleShutdown();
+    scheduleBrowserIdleShutdown();
     res.json({ ok: true });
   } catch (err) {
     log('error', 'session close failed', { error: err.message });
     handleRouteError(err, req, res);
   }
 });
+
+// --- Profiles ---
+function profileSummary(profile) {
+  const userId = profileUserId(profile.id);
+  const session = sessions.get(userId);
+  let tabs = 0;
+  if (session) for (const group of session.tabGroups.values()) tabs += group.size;
+  return { ...profileRegistry.describe(profile), userId, browserRunning: profileRuntimes.has(profile.id), tabs };
+}
+
+// Profile errors with a statusCode are expected caller errors, not internal ones.
+function sendProfileError(err, req, res) {
+  if (err.statusCode) return res.status(err.statusCode).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+  handleRouteError(err, req, res);
+}
+
+function resolveProfile(nameOrId) {
+  const profile = profileRegistry.get(nameOrId);
+  if (!profile) throw Object.assign(new Error(`Unknown profile: ${nameOrId}`), { statusCode: 404, code: 'profile_not_found' });
+  return profile;
+}
+
+async function deleteProfile(profile, reason) {
+  if (profile.name === DEFAULT_PROFILE_NAME) {
+    throw Object.assign(new Error(`the "${DEFAULT_PROFILE_NAME}" profile cannot be deleted`), { statusCode: 409, code: 'profile_protected' });
+  }
+  const userId = profileUserId(profile.id);
+  if (pluginCtx.resetStorageState) await pluginCtx.resetStorageState(userId, { reason, removeDir: true });
+  else await destroySession(userId, { reason });
+  await profileRuntimes.close(profile.id, reason);
+  tabHistory.removeUser(userId);
+  profileRegistry.remove(profile.id);
+  log('info', 'profile deleted', { profileId: profile.id, name: profile.name, kind: profile.kind, reason });
+}
+
+/**
+ * @openapi
+ * /profiles:
+ *   get:
+ *     tags: [Profiles]
+ *     summary: List browser profiles
+ *     description: Global profiles, each with its own Camoufox fingerprint, cookies, storage and history. Burners are wiped after burnerTtlDays without use.
+ *     responses:
+ *       200:
+ *         description: Profiles.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 profiles:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Profile'
+ *                 burnerTtlDays: { type: number }
+ *                 maxProfileBrowsers: { type: integer }
+ *   post:
+ *     tags: [Profiles]
+ *     summary: Create a browser profile
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string, description: 'Required unless burner is true' }
+ *               burner: { type: boolean }
+ *     responses:
+ *       201:
+ *         description: Created profile.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Profile'
+ *       400: { description: Invalid name. }
+ *       409: { description: Name already in use. }
+ */
+app.get('/profiles', (req, res) => {
+  res.json({ profiles: profileRegistry.list().map(p => profileSummary(profileRegistry.get(p.id))), burnerTtlDays: CONFIG.burnerTtlDays, maxProfileBrowsers: CONFIG.maxProfileBrowsers });
+});
+
+app.post('/profiles', (req, res) => {
+  try {
+    const profile = profileRegistry.create({ name: req.body?.name, burner: req.body?.burner === true });
+    log('info', 'profile created', { profileId: profile.id, name: profile.name, kind: profile.kind });
+    res.status(201).json(profileSummary(profile));
+  } catch (err) {
+    sendProfileError(err, req, res);
+  }
+});
+
+/**
+ * @openapi
+ * /profiles/{profile}:
+ *   delete:
+ *     tags: [Profiles]
+ *     summary: Delete a browser profile
+ *     description: Closes its tabs and browser, then erases its fingerprint, persisted storage and tab history.
+ *     parameters:
+ *       - name: profile
+ *         in: path
+ *         required: true
+ *         description: Profile name or id
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Deleted.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 deleted: { type: string }
+ *       404: { description: Unknown profile. }
+ *       409: { description: The default "main" profile cannot be deleted. }
+ */
+app.delete('/profiles/:profile', async (req, res) => {
+  try {
+    const profile = resolveProfile(req.params.profile);
+    await deleteProfile(profile, 'profile_deleted');
+    res.json({ ok: true, deleted: profile.name });
+  } catch (err) {
+    sendProfileError(err, req, res);
+  }
+});
+
+// Burner retention: wipe burners (storage, history, fingerprint) unused for
+// BWL_BURNER_TTL_DAYS. Named profiles are kept until explicitly deleted.
+async function sweepExpiredBurners() {
+  const ttlMs = CONFIG.burnerTtlDays * 24 * 60 * 60 * 1000;
+  for (const profile of profileRegistry.expired(Date.now(), ttlMs)) {
+    if (sessions.has(profileUserId(profile.id))) continue; // in use right now
+    await deleteProfile(profile, 'burner_expired').catch(err => log('warn', 'burner cleanup failed', { profileId: profile.id, error: err.message }));
+  }
+}
+setInterval(() => { sweepExpiredBurners().catch(() => {}); }, 60 * 60 * 1000).unref();
 
 // Cleanup stale sessions
 setInterval(() => {
@@ -6899,14 +7274,12 @@ setInterval(() => {
       const idleMs = now - session.lastAccess;
       sessionsExpiredTotal.inc();
       pluginEvents.emit('session:expired', { userId, idleMs });
-      finishIdleSession(() => closeSession(userId, session, { reason: 'session_timeout', clearDownloads: true, clearLocks: true }), () => sessions.size === 0 && sessionCreations.size === 0 && !browserLaunchPromise, () => closeBrowserFully('idle_session_cleanup')).catch(() => {});
+      finishIdleSession(() => closeSession(userId, session, { reason: 'session_timeout', clearDownloads: true, clearLocks: true }), () => defaultBrowserSessionCount() === 0 && sessionCreations.size === 0 && !browserLaunchPromise, () => closeBrowserFully('idle_session_cleanup')).catch(() => {});
       log('info', 'session expired', { userId });
     }
   }
   // When all sessions gone, start idle timer to kill browser
-  if (sessions.size === 0) {
-    scheduleBrowserIdleShutdown();
-  }
+  scheduleBrowserIdleShutdown();
   refreshTabLockQueueDepth();
 }, 60_000);
 
@@ -6983,11 +7356,11 @@ setInterval(() => {
     if (session.tabGroups.size === 0 && !hasActivePageLeases(session)) {
       session._closing = true;
       log('info', 'session empty after tab reaper, closing', { userId });
-      finishIdleSession(() => closeSession(userId, session, { reason: 'tab_reaper_empty_session', clearDownloads: true, clearLocks: true }), () => sessions.size === 0 && sessionCreations.size === 0 && !browserLaunchPromise, () => closeBrowserFully('idle_session_cleanup')).catch(() => {});
+      finishIdleSession(() => closeSession(userId, session, { reason: 'tab_reaper_empty_session', clearDownloads: true, clearLocks: true }), () => defaultBrowserSessionCount() === 0 && sessionCreations.size === 0 && !browserLaunchPromise, () => closeBrowserFully('idle_session_cleanup')).catch(() => {});
       sessionsExpiredTotal.inc();
     }
   }
-  if (sessions.size === 0) scheduleBrowserIdleShutdown();
+  scheduleBrowserIdleShutdown();
 }, 60_000);
 
 // Orphan page reaper -- force-closes Playwright pages that survived a safePageClose
@@ -7023,10 +7396,12 @@ setInterval(() => {
 // is large. This prevents idle Firefox children from holding most of the VM RAM
 // while Node reports zero sessions/tabs.
 setInterval(() => {
-  if (sessions.size > 0 || !browser) return;
+  if (defaultBrowserSessionCount() > 0 || !browser) return;
   const mem = process.memoryUsage();
   const nativeMemMb = Math.round((mem.rss - mem.heapUsed) / 1048576);
-  const browserRssMb = browserProcessTreeRssMb(_browserPid()) ?? browserProcessNameRssMb();
+  // The name-based fallback would also count profile browsers.
+  const browserRssMb = browserProcessTreeRssMb(_browserPid())
+    ?? (process.platform === 'linux' ? snapshotRssMb(defaultBrowserProcesses()) : browserProcessNameRssMb());
 
   if (browserRssMb !== null && browserRssMb >= CONFIG.browserRssRestartThresholdMb) {
     log('warn', 'browser rss pressure, restarting browser', {
@@ -7193,10 +7568,24 @@ app.get('/dashboard/state', async (_req, res) => {
       userId,
       lastAccess: new Date(session.lastAccess).toISOString(),
       tabs,
+      ...(session.profileId ? { profile: profileRegistry.get(session.profileId)?.name || null } : {}),
     });
   }
   const running = browser !== null && (browser.isConnected?.() ?? false);
-  res.json({ running, generatedAt: new Date().toISOString(), sessions: dashboardSessions, closedTabs: tabHistory.list().map(({ text, ...entry }) => entry) });
+  const profileName = userId => {
+    const id = profileIdFromUserId(userId);
+    return id ? profileRegistry.get(id)?.name || null : undefined;
+  };
+  res.json({
+    running,
+    generatedAt: new Date().toISOString(),
+    sessions: dashboardSessions,
+    closedTabs: tabHistory.list().map(({ text, ...entry }) => {
+      const profile = profileName(entry.userId);
+      return profile === undefined ? entry : { ...entry, profile };
+    }),
+    profiles: profileRegistry.list().map(p => profileSummary(profileRegistry.get(p.id))),
+  });
 });
 
 /**
@@ -7269,29 +7658,34 @@ app.get('/dashboard/tabs/:tabId/activity', (req, res) => {
  */
 app.get('/tabs', async (req, res) => {
   try {
-    const userId = req.query.userId;
-    const session = sessions.get(normalizeUserId(userId));
-    
-    if (!session) {
-      return res.json({ running: true, tabs: [] });
+    const userId = normalizeUserId(req.query.userId);
+    // The caller's own tabs, plus every profile tab (profiles are global).
+    const listed = [[userId, sessions.get(userId)]];
+    for (const [ownerId, session] of sessions) {
+      if (session.profileId && ownerId !== userId) listed.push([ownerId, session]);
     }
-    
+
     const tabs = [];
-    for (const [listItemId, group] of session.tabGroups) {
-      for (const [tabId, tabState] of group) {
-        tabState.lastTitle = await withTimeout(tabState.page.title(), 1500, 'title').catch(() => tabState.lastTitle || '');
-        tabs.push({
-          targetId: tabId,
-          tabId,
-          url: tabState.page.url(),
-          title: tabState.lastTitle,
-          lifetime: tabLifetime(tabState, TAB_INACTIVITY_MS, Date.now(), tabLocks.get(tabId)),
-          navigationError: tabState.navigationError || null,
-          listItemId
-        });
+    for (const [, session] of listed) {
+      if (!session) continue;
+      const profile = session.profileId ? profileRegistry.get(session.profileId) : null;
+      for (const [listItemId, group] of session.tabGroups) {
+        for (const [tabId, tabState] of group) {
+          tabState.lastTitle = await withTimeout(tabState.page.title(), 1500, 'title').catch(() => tabState.lastTitle || '');
+          tabs.push({
+            targetId: tabId,
+            tabId,
+            url: tabState.page.url(),
+            title: tabState.lastTitle,
+            lifetime: tabLifetime(tabState, TAB_INACTIVITY_MS, Date.now(), tabLocks.get(tabId)),
+            navigationError: tabState.navigationError || null,
+            listItemId,
+            ...(profile ? { profile: profile.name } : {}),
+          });
+        }
       }
     }
-    
+
     res.json({ running: true, tabs });
   } catch (err) {
     log('error', 'list tabs failed', { reqId: req.reqId, error: err.message });
@@ -7337,10 +7731,12 @@ app.get('/tabs', async (req, res) => {
  */
 app.post('/tabs/open', async (req, res) => {
   try {
-    const { url, userId, listItemId = 'default' } = req.body;
-    if (!userId) {
+    const { url, listItemId = 'default' } = req.body;
+    if (!req.body.userId) {
       return res.status(400).json({ error: 'userId is required' });
     }
+    // Legacy route: tabs live in the default profile, like POST /tabs.
+    const userId = profileUserId(profileRegistry.ensure(DEFAULT_PROFILE_NAME).id);
     if (!url) {
       return res.status(400).json({ error: 'url is required' });
     }
@@ -8088,6 +8484,7 @@ async function gracefulShutdown(signal) {
     clearLocks: false,
   });
 
+  await profileRuntimes.closeAll(`shutdown:${signal}`);
   await closeBrowserFully(`shutdown:${signal}`);
   await sentryFlush(2000);
   process.exit(0);
@@ -8164,8 +8561,9 @@ const server = app.listen(PORT, CONFIG.bindHost || undefined, async () => {
   // stale by mtime while its storage is still in use.
   setInterval(() => {
     try {
-      const profiles = browser ? profilePathsFromProcessSnapshot(snapshotOwnedBrowserProcesses(process.pid)) : [];
-      if (browser && profiles.size === 0) {
+      const live = browser || profileRuntimes.list().length > 0;
+      const profiles = live ? profilePathsFromProcessSnapshot(snapshotOwnedBrowserProcesses(process.pid)) : [];
+      if (live && profiles.size === 0) {
         log('warn', 'skipped periodic firefox profile cleanup: live profile path unavailable');
         return;
       }
@@ -8175,6 +8573,7 @@ const server = app.listen(PORT, CONFIG.bindHost || undefined, async () => {
       }
     } catch { /* best effort */ }
   }, 10 * 60 * 1000).unref();
+  sweepExpiredBurners().catch(err => log('warn', 'burner sweep failed', { error: err.message }));
   const traceSweep = sweepOldTraces({
     baseDir: CONFIG.tracesDir,
     ttlMs: CONFIG.tracesTtlHours * 3600 * 1000,

@@ -98,6 +98,18 @@
         "description": "Wait for page readiness, a selector, text, or URL"
       },
       {
+        "name": "bwl_wait_for_reply",
+        "description": "Wait for new chat messages and typing status without repeated snapshots"
+      },
+      {
+        "name": "bwl_keep_open",
+        "description": "Protect a tab from automatic cleanup"
+      },
+      {
+        "name": "bwl_tab_history",
+        "description": "Read closed-tab recovery information and saved text"
+      },
+      {
         "name": "bwl_mouse",
         "description": "Move, hover, or drag the native browser mouse"
       },
@@ -134,6 +146,18 @@
         "description": "List open tabs for a user"
       },
       {
+        "name": "bwl_create_profile",
+        "description": "Create a browser profile with its own fingerprint, cookies and history"
+      },
+      {
+        "name": "bwl_list_profiles",
+        "description": "List browser profiles"
+      },
+      {
+        "name": "bwl_delete_profile",
+        "description": "Delete a browser profile and its data"
+      },
+      {
         "name": "bwl_import_cookies",
         "description": "Import Netscape cookie file (requires BWL_API_KEY)"
       },
@@ -144,18 +168,6 @@
       {
         "name": "bwl_batch",
         "description": "Run several click/type/wait/scroll/navigate/read_text actions in one call"
-      },
-      {
-        "name": "bwl_wait_for_reply",
-        "description": "Wait for new chat messages and typing status without repeated snapshots"
-      },
-      {
-        "name": "bwl_keep_open",
-        "description": "Protect a tab from automatic cleanup"
-      },
-      {
-        "name": "bwl_tab_history",
-        "description": "Read closed-tab recovery information and saved text"
       }
     ]
   },

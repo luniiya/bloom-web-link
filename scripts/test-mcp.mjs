@@ -30,6 +30,9 @@ const EXPECTED_TOOLS = [
   'bwl_wait_for_reply',
   'bwl_keep_open',
   'bwl_tab_history',
+  'bwl_create_profile',
+  'bwl_list_profiles',
+  'bwl_delete_profile',
 ];
 
 let failures = 0;

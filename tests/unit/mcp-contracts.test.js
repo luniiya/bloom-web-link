@@ -88,8 +88,8 @@ afterEach(() => {
 
 // --- Schema sanity ----------------------------------------------------------
 describe('TOOL_DEFS', () => {
-  test('exposes exactly 20 tools', () => {
-    expect(TOOL_DEFS).toHaveLength(20);
+  test('exposes exactly 23 tools', () => {
+    expect(TOOL_DEFS).toHaveLength(23);
   });
 
   test('every def has a unique name and a valid JSON-Schema object', () => {
@@ -119,6 +119,9 @@ describe('buildRequest', () => {
     ['bwl_close_tab', { tabId: 't1' }, { method: 'DELETE', path: '/tabs/t1?userId=u1', auth: 'accessKey', kind: 'json' }],
     ['bwl_evaluate', { tabId: 't1', expression: '1+1' }, { method: 'POST', path: '/tabs/t1/evaluate', auth: 'accessKey', kind: 'json' }],
     ['bwl_list_tabs', {}, { method: 'GET', path: '/tabs?userId=u1', auth: 'accessKey', kind: 'json' }],
+    ['bwl_create_profile', { name: 'shop' }, { method: 'POST', path: '/profiles', auth: 'accessKey', kind: 'json' }],
+    ['bwl_list_profiles', {}, { method: 'GET', path: '/profiles', auth: 'accessKey', kind: 'json' }],
+    ['bwl_delete_profile', { profile: 'a b' }, { method: 'DELETE', path: '/profiles/a%20b', auth: 'accessKey', kind: 'json' }],
   ])('%s → %s %s (auth=%s)', (name, args, expected) => {
     const spec = buildRequest(name, args, CTX);
     expect(spec.method).toBe(expected.method);
@@ -130,6 +133,16 @@ describe('buildRequest', () => {
   test('create_tab body carries url + userId + sessionKey', () => {
     const spec = buildRequest('bwl_create_tab', { url: 'https://x.com' }, CTX);
     expect(spec.body).toEqual({ url: 'https://x.com', userId: 'u1', sessionKey: 'default' });
+  });
+
+  test('create_tab forwards an optional profile', () => {
+    const spec = buildRequest('bwl_create_tab', { url: 'https://x.com', profile: 'burner' }, CTX);
+    expect(spec.body).toEqual({ url: 'https://x.com', userId: 'u1', sessionKey: 'default', profile: 'burner' });
+  });
+
+  test('create_profile body carries name and burner flag', () => {
+    expect(buildRequest('bwl_create_profile', { name: 'shop' }, CTX).body).toEqual({ name: 'shop', burner: false });
+    expect(buildRequest('bwl_create_profile', { burner: true }, CTX).body).toEqual({ burner: true });
   });
 
   test('interaction tools forward all non-routing args + userId in body', () => {

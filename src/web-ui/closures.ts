@@ -16,7 +16,7 @@ export class ClosureTracker {
   track(state: State): Map<string, TabRef> {
     for (const record of state.closedTabs || []) {
       const key = `${record.userId}:${record.tabId}`;
-      this.closed.set(key, { session: { userId: record.userId, lastAccess: new Date(record.closedAt).toISOString(), tabs: [] }, tab: record, closedAt: record.closedAt, reason: record.reason });
+      this.closed.set(key, { session: { userId: record.userId, lastAccess: new Date(record.closedAt).toISOString(), tabs: [], profile: record.profile }, tab: record, closedAt: record.closedAt, reason: record.reason });
     }
     const openNow = new Map<string, TabRef>();
     for (const session of state.sessions) {

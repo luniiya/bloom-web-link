@@ -59,7 +59,7 @@ describe('launch compatibility source contract', () => {
       'let sessionProxy = null;'
     );
     const launchBrowser = sourceBetween(
-      'async function launchBrowserInstance()',
+      'async function buildCamoufoxOptionsNow(',
       'async function ensureBrowser()'
     );
 
@@ -71,13 +71,13 @@ describe('launch compatibility source contract', () => {
 
   test('uses a real desktop window only when interactive desktop mode is explicit', () => {
     const launch = sourceBetween(
-      'async function launchBrowserInstance()',
+      'async function buildCamoufoxOptionsNow(',
       'async function ensureBrowser()'
     );
 
     expect(launch).toContain("const useDesktopWindow = CONFIG.interactiveMode === 'desktop'");
     expect(launch).toContain("if (os.platform() === 'linux' && !useDesktopWindow)");
-    expect(launch).toContain('headless: useVirtualDisplay ? false : !useDesktopWindow');
+    expect(launch).toContain('headless: vdDisplay ? false : !useDesktopWindow');
   });
 
   test('falls back when optional GeoIP setup is unavailable', () => {
@@ -86,7 +86,7 @@ describe('launch compatibility source contract', () => {
       'async function launchBrowserInstance()'
     );
     const launchBrowser = sourceBetween(
-      'async function launchBrowserInstance()',
+      'async function buildCamoufoxOptionsNow(',
       'async function ensureBrowser()'
     );
 

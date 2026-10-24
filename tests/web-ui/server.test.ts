@@ -139,3 +139,15 @@ describe('tab protection and recovery', () => {
     expect(lastSeen()).toMatchObject({ method: 'GET', path: '/tabs/t1/history?userId=u1' });
   });
 });
+
+describe("/api/profiles/delete", () => {
+  test("deletes the named profile in the core", async () => {
+    await post(open, "/api/profiles/delete", { profile: "my shop" });
+    expect(lastSeen()).toMatchObject({ method: "DELETE", path: "/profiles/my%20shop" });
+  });
+
+  test("requires a profile and authorization", async () => {
+    expect((await post(open, "/api/profiles/delete", {})).status).toBe(400);
+    expect((await post(secured, "/api/profiles/delete", { profile: "x" })).status).toBe(401);
+  });
+});

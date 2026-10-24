@@ -175,20 +175,38 @@ export async function register(app, ctx, pluginConfig = {}) {
     activeSessions.clear();
   });
 
+  /**
+   * Close the live session without checkpointing it and delete persisted
+   * state. `removeDir` also drops the user's directory (profile deletion).
+   */
+  async function resetStorageState(userId, { reason = 'storage_reset', removeDir = false } = {}) {
+    if (resettingUsers.has(userId)) {
+      throw Object.assign(new Error('storage state reset already in progress'), { statusCode: 409 });
+    }
+    resettingUsers.add(userId);
+    try {
+      const clearedLive = await ctx.destroySession(userId, { reason });
+      await checkpointPromises.get(userId)?.catch(() => {});
+
+      const { userDir, storageStatePath, metaPath } = getUserPersistencePaths(profileDir, userId);
+      const removedPersisted = await removeIfExists(storageStatePath);
+      await removeIfExists(metaPath);
+      if (removeDir) await fs.rm(userDir, { recursive: true, force: true });
+      return { clearedLive, removedPersisted };
+    } finally {
+      resettingUsers.delete(userId);
+    }
+  }
+  ctx.resetStorageState = resetStorageState;
+
   app.delete('/sessions/:userId/storage_state', ctx.auth(), async (req, res) => {
     const userId = ctx.normalizeUserId(req.params.userId);
     if (resettingUsers.has(userId)) {
       return res.status(409).json({ error: 'storage state reset already in progress' });
     }
 
-    resettingUsers.add(userId);
     try {
-      const clearedLive = await ctx.destroySession(userId, { reason: 'storage_reset' });
-      await checkpointPromises.get(userId)?.catch(() => {});
-
-      const { storageStatePath, metaPath } = getUserPersistencePaths(profileDir, userId);
-      const removedPersisted = await removeIfExists(storageStatePath);
-      await removeIfExists(metaPath);
+      const { clearedLive, removedPersisted } = await resetStorageState(userId);
 
       log('info', 'session storage state reset', {
         reqId: req.reqId,
@@ -200,8 +218,6 @@ export async function register(app, ctx, pluginConfig = {}) {
     } catch (err) {
       log('error', 'storage state reset failed', { reqId: req.reqId, userId, error: err.message });
       res.status(500).json({ error: ctx.safeError(err) });
-    } finally {
-      resettingUsers.delete(userId);
     }
   });
 

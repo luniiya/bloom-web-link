@@ -1,4 +1,5 @@
 import type { ClosedEntry, State, TabRef } from "../types.ts";
+import { ProfileList } from "./ProfileList.tsx";
 import { TabCard } from "./TabCard.tsx";
 
 type Props = {
@@ -6,9 +7,10 @@ type Props = {
   state: State | null;
   open: TabRef[];
   closed: ClosedEntry[];
+  onDeleteProfile?: (name: string) => void;
 };
 
-export function GridView({ hidden, state, open, closed }: Props) {
+export function GridView({ hidden, state, open, closed, onDeleteProfile }: Props) {
   return (
     <section id="grid-view" hidden={hidden}>
       <section className="summary" aria-live="polite">
@@ -24,6 +26,8 @@ export function GridView({ hidden, state, open, closed }: Props) {
           {open.map(({ session, tab }) => <TabCard key={`${session.userId}:${tab.tabId}`} session={session} tab={tab} closed={false} />)}
         </section>
       </section>
+
+      <ProfileList profiles={state?.profiles ?? []} onDelete={onDeleteProfile} />
 
       <section className="tab-section">
         <h3 className="section-heading">Closed</h3>

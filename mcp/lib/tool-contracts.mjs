@@ -76,6 +76,11 @@ export const TOOL_DEFS = [
       type: 'object',
       properties: {
         url: { type: 'string', description: 'Optional initial HTTP(S) URL; omit or use about:blank for a blank tab' },
+        profile: {
+          type: 'string',
+          description:
+            'Optional browser profile (name or id) to open the tab in. Each profile has its own fingerprint, cookies and history, shared by all agents. Use "burner" to create a fresh throwaway profile (kept 30 days after last use). Omit to use the shared default "main" profile.',
+        },
       },
       required: [],
     },
@@ -340,8 +345,37 @@ export const TOOL_DEFS = [
   },
   {
     name: 'bwl_list_tabs',
-    description: 'List all open Bloom Web Link tabs for the current session.',
+    description: 'List open Bloom Web Link tabs. Profile tabs (including the default "main" profile) are shared by all agents and marked with their profile name.',
     inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'bwl_create_profile',
+    description:
+      'Create a global browser profile: a separate Camoufox browser with its own stable fingerprint (user agent, screen, fonts, canvas/audio noise), cookies, storage and history. Named profiles are kept until deleted; burner profiles get a generated name and are wiped 30 days after last use. Open tabs in it with bwl_create_tab({profile}).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Profile name (letters, digits, "_", "-", "."). Required unless burner is true.' },
+        burner: { type: 'boolean', description: 'Create a throwaway burner profile with a generated name' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'bwl_list_profiles',
+    description: 'List browser profiles with their kind (named/burner), user agent, last use, whether their browser is running, and open tab count.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'bwl_delete_profile',
+    description: 'Permanently delete a browser profile: closes its tabs and browser and erases its fingerprint, cookies, storage and history.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        profile: { type: 'string', description: 'Profile name or id' },
+      },
+      required: ['profile'],
+    },
   },
   {
     name: 'bwl_import_cookies',
@@ -469,8 +503,20 @@ export function buildRequest(name, args, ctx) {
         path: '/tabs',
         auth: 'accessKey',
         responseKind: 'json',
-        body: { url: args.url === 'about:blank' ? undefined : args.url, userId, sessionKey },
+        body: { url: args.url === 'about:blank' ? undefined : args.url, userId, sessionKey, ...(args.profile ? { profile: args.profile } : {}) },
       };
+    case 'bwl_create_profile':
+      return {
+        method: 'POST',
+        path: '/profiles',
+        auth: 'accessKey',
+        responseKind: 'json',
+        body: { ...(args.name ? { name: args.name } : {}), burner: args.burner === true },
+      };
+    case 'bwl_list_profiles':
+      return { method: 'GET', path: '/profiles', auth: 'accessKey', responseKind: 'json' };
+    case 'bwl_delete_profile':
+      return { method: 'DELETE', path: `/profiles/${encodeURIComponent(args.profile)}`, auth: 'accessKey', responseKind: 'json' };
     case 'bwl_snapshot': {
       const params = new URLSearchParams({ userId, includeScreenshot: args.includeScreenshot === false ? 'false' : 'true' });
       if (args.offset != null && args.offset !== '') params.set('offset', String(args.offset));

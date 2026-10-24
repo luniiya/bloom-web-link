@@ -228,24 +228,31 @@ describe('Security', () => {
     });
   });
 
-  describe('Session isolation', () => {
-    test('users cannot access each other tabs', async () => {
+  describe('Profile sharing', () => {
+    // Tabs open in the global "main" profile by default, so every user shares
+    // them; isolation now comes from separate profiles (named or burner).
+    test('tabs in the default main profile are shared across users', async () => {
       const client1 = createClient(serverUrl);
       const client2 = createClient(serverUrl);
       try {
-        const { tabId } = await client1.createTab(`${testSiteUrl}/pageA`);
-
-        // client2 trying to snapshot client1's tab should 404
-        try {
-          await client2.getSnapshot(tabId);
-          fail('Should not be able to access another user tab');
-        } catch (err) {
-          expect(err.status).toBe(410);
-        }
+        const created = await client1.createTab(`${testSiteUrl}/pageA`);
+        expect(created.profile).toBe('main');
+        const snap = await client2.getSnapshot(created.tabId);
+        expect(snap.url).toContain('/pageA');
       } finally {
         await client1.cleanup();
         await client2.cleanup();
       }
+    });
+
+    test('an unknown profile is rejected', async () => {
+      const res = await fetch(`${serverUrl}/tabs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'u', sessionKey: 'k', profile: 'no-such-profile' }),
+      });
+      expect(res.status).toBe(404);
+      expect((await res.json()).code).toBe('profile_not_found');
     });
   });
 

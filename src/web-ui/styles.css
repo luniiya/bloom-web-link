@@ -106,6 +106,16 @@ main { padding: 28px 32px 56px; max-width: 1800px; margin: auto; }
 .session-pill { max-width: 150px; overflow: hidden; text-overflow: ellipsis; padding: 4px 8px; border-radius: 999px; color: var(--muted); background: var(--surface-pill); font: 10px ui-monospace, monospace; }
 .tab-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; color: var(--muted); font: 10px ui-monospace, monospace; }
 .user { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-pill { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 8px; border-radius: 999px; color: var(--accent-text); border: 1px solid var(--accent); font: 10px ui-monospace, monospace; }
+.profile-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.profile-row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); font-size: 12px; }
+.profile-kind { color: var(--muted); font: 10px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; }
+.profile-kind.burner { color: var(--accent-text); }
+.profile-ua { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font: 11px ui-monospace, monospace; }
+.profile-meta { color: var(--muted-strong); white-space: nowrap; }
+.profile-delete { padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); color: var(--text); font: inherit; cursor: pointer; }
+.profile-delete:hover { border-color: var(--accent); color: var(--accent-text); }
+@media (max-width: 640px) { .profile-row { flex-wrap: wrap; } .profile-ua { flex-basis: 100%; order: 5; } }
 .loading { position: absolute; inset: 0; display: grid; place-items: center; color: #6b6070; font-size: 12px; background: linear-gradient(110deg, #100b13 35%, #201a26 50%, #100b13 65%); background-size: 300% 100%; animation: shimmer 1.6s infinite; }
 .screen-thumb .loading { font-size: 10px; }
 .screen-thumb.ready .loading { display: none; }

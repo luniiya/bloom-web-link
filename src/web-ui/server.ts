@@ -45,6 +45,11 @@ export async function startWebUi(config: ContainerConfig): Promise<Bun.Server> {
         if (!input.userId || !input.url || !/^https?:\/\//i.test(input.url)) return json({ error: "userId and an http(s) URL required" }, 400);
         return coreFetch(config, "/tabs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: input.userId, sessionKey: input.sessionKey || "default", url: input.url }) });
       }
+      if (url.pathname === "/api/profiles/delete" && request.method === "POST") {
+        const input = await request.json() as { profile?: string };
+        if (!input.profile || typeof input.profile !== "string") return json({ error: "profile is required" }, 400);
+        return coreFetch(config, `/profiles/${encodeURIComponent(input.profile)}`, { method: "DELETE" });
+      }
       if (url.pathname === "/api/activity") {
         const tabId = url.searchParams.get("tabId") || "";
         if (!tabId) return json({ error: "tabId is required" }, 400);

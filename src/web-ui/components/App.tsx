@@ -98,6 +98,13 @@ export function App() {
     setTheme(next);
   }
 
+  async function deleteProfile(name: string) {
+    if (!confirm(`Delete profile "${name}"? Its tabs close and its fingerprint, cookies and history are erased.`)) return;
+    const response = await fetch("/api/profiles/delete", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ profile: name }) }).catch(() => null);
+    setStatus(response?.ok ? `Deleted profile ${name}` : `Could not delete profile ${name}`);
+    void refresh();
+  }
+
   function askForKey() {
     const next = prompt("Bloom Web Link access key (leave blank when authentication is disabled)", getAccessKey());
     if (next === null) return;
@@ -109,7 +116,7 @@ export function App() {
     <>
       <Header status={status} online={online} theme={theme} onThemeChange={changeTheme} authHidden={authHidden} onAuth={askForKey} />
       <main>
-        <GridView hidden={shown.kind !== "grid"} state={view?.state ?? null} open={view?.open ?? []} closed={view?.closed ?? []} />
+        <GridView hidden={shown.kind !== "grid"} state={view?.state ?? null} open={view?.open ?? []} closed={view?.closed ?? []} onDeleteProfile={(name) => void deleteProfile(name)} />
         <section id="detail-view" hidden={shown.kind !== "detail"}>
           {view && shown.kind === "detail" && (
             <DetailView

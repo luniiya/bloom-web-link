@@ -93,3 +93,38 @@ describe("rendered markup", () => {
     for (const id of ids) expect(html).toContain(`id="${id}"`);
   });
 });
+
+describe("profiles", () => {
+  const profileSession = { userId: "profile:p1", lastAccess: "2026-01-01T00:00:00Z", profile: "shopping", tabs: [
+    { tabId: "t9", sessionKey: "default", url: "https://shop.test/", title: "Shop" },
+  ] };
+  const profiles = [
+    { id: "p0", name: "main", kind: "named" as const, createdAt: 1, lastUsedAt: 1, userAgent: null, browserRunning: false, tabs: 0, default: true },
+    { id: "p1", name: "shopping", kind: "named" as const, createdAt: 1, lastUsedAt: 1, userAgent: "Mozilla/5.0 Firefox/150.0", browserRunning: true, tabs: 1 },
+    { id: "p2", name: "burner-abc123", kind: "burner" as const, createdAt: 1, lastUsedAt: 1, userAgent: null, browserRunning: false, tabs: 0 },
+  ];
+  const withProfiles = renderToStaticMarkup(h(GridView, {
+    hidden: false,
+    state: { ...state, sessions: [session, profileSession], profiles },
+    open: [{ session: profileSession, tab: profileSession.tabs[0]! }],
+    closed: [],
+    onDeleteProfile: noop,
+  }));
+
+  test("profile tabs show their profile instead of the session id", () => {
+    expect(withProfiles).toContain('<span class="profile-pill" title="Browser profile">shopping</span>');
+  });
+
+  test("lists profiles with kind, user agent, state and a delete action", () => {
+    expect(withProfiles).toContain('id="profile-list"');
+    expect(withProfiles).toContain('<span class="profile-kind burner">burner</span>');
+    expect(withProfiles).toContain("Mozilla/5.0 Firefox/150.0");
+    expect(withProfiles).toContain("1 tab · running");
+    // The default "main" profile has no delete button.
+    expect(withProfiles.match(/class="profile-delete"/g)).toHaveLength(2);
+  });
+
+  test("the section is omitted when there are no profiles", () => {
+    expect(grid).not.toContain('id="profile-list"');
+  });
+});

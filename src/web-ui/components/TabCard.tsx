@@ -16,7 +16,7 @@ export function TabCard({ session, tab, closed }: TabRef & { closed: boolean }) 
         <img alt="Live browser tab screenshot" src={shot.url} />
         <span className="loading">{shot.error ?? LOADING_TEXT}</span>
       </div>
-      <div className="tab-footer"><span className="session-pill">{tab.sessionKey}</span><span className="user">{shortId(session.userId)}</span></div>
+      <div className="tab-footer"><span className="session-pill">{tab.sessionKey}</span>{session.profile ? <span className="profile-pill" title="Browser profile">{session.profile}</span> : <span className="user">{shortId(session.userId)}</span>}</div>
     </button>
   );
 }

@@ -45,6 +45,10 @@
       "description": "Per-user session state: cookies, teardown."
     },
     {
+      "name": "Profiles",
+      "description": "Global browser profiles with their own fingerprint, cookies and history."
+    },
+    {
       "name": "Browser",
       "description": "Global browser lifecycle (start/stop)."
     },
@@ -75,6 +79,56 @@
         "properties": {
           "error": {
             "type": "string"
+          }
+        }
+      },
+      "Profile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "named",
+              "burner"
+            ]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "lastUsedAt": {
+            "type": "number"
+          },
+          "userAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "screen": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              }
+            }
+          },
+          "userId": {
+            "type": "string",
+            "description": "Core session id of the profile (profile:<id>)"
+          },
+          "browserRunning": {
+            "type": "boolean"
+          },
+          "tabs": {
+            "type": "integer"
           }
         }
       }
@@ -436,6 +490,10 @@
                   "trace": {
                     "type": "boolean",
                     "description": "Enable Playwright tracing for this session (screenshots, DOM snapshots, network). Must be set on first tab creation; cannot be added to an existing session."
+                  },
+                  "profile": {
+                    "type": "string",
+                    "description": "Global profile (name or id) to open the tab in. \"burner\" creates a new burner profile. Defaults to the \"main\" profile."
                   }
                 }
               }
@@ -3187,6 +3245,130 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/profiles": {
+      "get": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "List browser profiles",
+        "description": "Global profiles, each with its own Camoufox fingerprint, cookies, storage and history. Burners are wiped after burnerTtlDays without use.",
+        "responses": {
+          "200": {
+            "description": "Profiles.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "profiles": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Profile"
+                      }
+                    },
+                    "burnerTtlDays": {
+                      "type": "number"
+                    },
+                    "maxProfileBrowsers": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Create a browser profile",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Required unless burner is true"
+                  },
+                  "burner": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid name."
+          },
+          "409": {
+            "description": "Name already in use."
+          }
+        }
+      }
+    },
+    "/profiles/{profile}": {
+      "delete": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Delete a browser profile",
+        "description": "Closes its tabs and browser, then erases its fingerprint, persisted storage and tab history.",
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "description": "Profile name or id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "deleted": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown profile."
+          },
+          "409": {
+            "description": "The default \"main\" profile cannot be deleted."
           }
         }
       }

@@ -71,11 +71,26 @@ For hosts that only support stdio, a thin adapter lives in [`mcp/`](mcp/README.m
 | `bwl_element_state` | Computed style and ARIA state for selectors |
 | `bwl_evaluate` | Run JavaScript in the page |
 | `bwl_batch` | Run several actions in one call |
-| `bwl_list_tabs` | List open tabs |
+| `bwl_list_tabs` | List open tabs (yours plus all profile tabs) |
+| `bwl_create_profile` | Create a named or burner browser profile |
+| `bwl_list_profiles` | List browser profiles |
+| `bwl_delete_profile` | Delete a profile and everything it stored |
 | `bwl_close_tab` | Close a tab |
 | `bwl_import_cookies` | Import a Netscape cookie file (requires `BWL_API_KEY`) |
 
 The typical loop is **snapshot → act by ref → snapshot again**. Refs are more reliable than CSS selectors.
+
+## Profiles
+
+A **profile** is a separate Camoufox browser with its own fingerprint (user agent, screen, fonts, canvas/audio noise), cookies, storage and tab history, so sites can't link it to other profiles. Profiles are global: any agent can open tabs in them, and they show up in the dashboard.
+
+- **`main`** is the default. Tabs opened without a `profile` go into it, so every agent shares its cookies and logins. It always exists and can't be deleted.
+- **Named profiles** (`bwl_create_profile({name: "shopping"})`) are kept until you delete them.
+- **Burner profiles** (`bwl_create_profile({burner: true})`, or `bwl_create_tab({profile: "burner"})`) get a generated name. They're wiped, along with their history, after `BWL_BURNER_TTL_DAYS` days (default 30) without use.
+
+Open a tab in a profile with `bwl_create_tab({url, profile: "shopping"})`. All other tab tools work on profile tabs as usual. The fingerprint is created once and reused on every launch, so a profile stays the same "machine" across restarts: same user agent, screen, CPU count, WebGL GPU and font/audio noise. One exception: Camoufox re-rolls canvas noise for every new browser context, so the canvas hash is stable while a profile's session is open but changes after its browser restarts.
+
+Each profile with open tabs runs its own browser process, which uses roughly 300–500 MB of RAM. It shuts down after `BROWSER_IDLE_TIMEOUT_MS` once its tabs are closed, and `BWL_MAX_PROFILE_BROWSERS` caps how many can run at once.
 
 ## Dashboard
 
@@ -94,6 +109,8 @@ Set these in the environment (or a `.env` file next to `compose.yaml`):
 | `BWL_WEB_PORT` | `6080` | Dashboard port |
 | `BWL_LOCALE` / `BWL_TIMEZONE` | _auto_ | Browser locale and timezone |
 | `BWL_CRASH_REPORT_ENABLED` | `false` | Anonymized crash reporting |
+| `BWL_MAX_PROFILE_BROWSERS` | `4` | Profile browsers allowed to run at once |
+| `BWL_BURNER_TTL_DAYS` | `30` | Days without use before a burner profile is wiped (`0` keeps them) |
 
 Plugin toggles (YouTube transcripts, persistence) live in [`bwl.config.json`](bwl.config.json).
 
