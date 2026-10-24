@@ -1,5 +1,5 @@
 import {
-  anonymize, stackSignature, createReporter, sendToRelay, createUrlAnonymizer,
+  anonymize, stackSignature, createReporter, createUrlAnonymizer,
   createTabHealthTracker, collectResourceSnapshot, detectBotProtection,
   classifyProxyError,
 } from '../../lib/reporter.js';
@@ -341,43 +341,7 @@ describe('stackSignature', () => {
   });
 });
 
-// ============================================================================
-// Rate limiter tests
-// ============================================================================
-
-// Reporter is now enabled by default (no appId check -- relay handles auth)
 const TEST_CRASH_CONFIG = {};
-
-describe('rate limiting', () => {
-
-  test('allows up to maxPerHour reports', () => {
-    const reporter = createReporter({
-      ...TEST_CRASH_CONFIG,
-      crashReportEnabled: true,
-      crashReportRateLimit: 3,
-    });
-    const rl = reporter._rateLimiter._default;
-    expect(rl.tryAcquire()).toBeTruthy();
-    expect(rl.tryAcquire()).toBeTruthy();
-    expect(rl.tryAcquire()).toBeTruthy();
-    expect(!rl.tryAcquire()).toBeTruthy();
-    reporter.stop();
-  });
-
-  test('expires old entries after 1 hour', () => {
-    const reporter = createReporter({
-      ...TEST_CRASH_CONFIG,
-      crashReportEnabled: true,
-      crashReportRateLimit: 2,
-    });
-    const rl = reporter._rateLimiter._default;
-    rl.timestamps = [Date.now() - 3700_000, Date.now() - 3600_001];
-    expect(rl.tryAcquire()).toBeTruthy();
-    expect(rl.tryAcquire()).toBeTruthy();
-    expect(!rl.tryAcquire()).toBeTruthy();
-    reporter.stop();
-  });
-});
 
 // ============================================================================
 // Reporter lifecycle tests
@@ -385,32 +349,36 @@ describe('rate limiting', () => {
 
 describe('createReporter', () => {
 
-  test('returns no-op functions when disabled', async () => {
-    const reporter = createReporter({
-      crashReportEnabled: false,
-      crashReportRepo: '',
-    });
-    await reporter.reportCrash(new Error('test'));
-    await reporter.reportHang('navigate', 30000);
-    await reporter.reportStuckLoop(60000);
-    reporter.startWatchdog();
-    reporter.trackRoute('GET /test');
-    expect(typeof reporter.resetNativeMemBaseline).toBe('function');
-    reporter.resetNativeMemBaseline();
-    reporter.stop();
-  });
-
-  test('exposes anonymize for testing even when disabled', () => {
-    const reporter = createReporter({ crashReportEnabled: false });
+  test('exposes anonymize for testing', () => {
+    const reporter = createReporter({});
     expect(typeof reporter._anonymize).toBe('function');
     expect(reporter._anonymize('/Users/foo/bar/baz.js').includes('baz.js')).toBeTruthy();
     expect(!reporter._anonymize('/Users/foo/bar/baz.js').includes('foo')).toBeTruthy();
   });
 
+  test('reports stay local and never touch the network', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    const warnings = [];
+    let fetched = false;
+    globalThis.fetch = async () => { fetched = true; return { ok: true, status: 200 }; };
+    console.warn = (line) => warnings.push(String(line));
+    try {
+      const reporter = createReporter({});
+      await reporter.reportCrash(new Error('boom'));
+      await reporter.reportHang('navigate', 30000);
+      await reporter.reportStuckLoop(60000);
+      await reporter.stop();
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+    }
+    expect(fetched).toBe(false);
+    expect(warnings.some(w => w.includes('boom'))).toBe(true);
+  });
+
   test('stop() resolves even with no in-flight reports', async () => {
     const reporter = createReporter({
-      ...TEST_CRASH_CONFIG,
-      crashReportEnabled: true,
     });
     reporter.startWatchdog();
     const result = await reporter.stop();
@@ -419,8 +387,6 @@ describe('createReporter', () => {
 
   test('trackRoute is a function on enabled reporter', () => {
     const reporter = createReporter({
-      ...TEST_CRASH_CONFIG,
-      crashReportEnabled: true,
     });
     expect(typeof reporter.trackRoute).toBe('function');
     reporter.trackRoute('POST /tabs/:id/navigate');
@@ -990,19 +956,19 @@ describe('native memory leak detection', () => {
   // The watchdog's native memory check runs every 30s, so we advance the
   // setInterval manually.
 
-  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
   const originalUptime = process.uptime;
   const originalMemoryUsage = process.memoryUsage;
-  let fetchCalls;
+  let warnCalls;
   let mockUptimeSeconds;
   let mockRss;
   let mockHeapUsed;
 
   beforeEach(() => {
-    fetchCalls = [];
-    globalThis.fetch = async (url, opts) => {
-      fetchCalls.push({ url, body: JSON.parse(opts?.body || '{}') });
-      return { ok: true, status: 200 };
+    warnCalls = [];
+    console.warn = (line) => {
+      const match = /^\[bwl\] ([^:]+(?::[^:\s]+)?):/.exec(String(line));
+      warnCalls.push({ body: { type: match ? match[1] : 'other' } });
     };
     mockUptimeSeconds = 200; // default: past min uptime
     mockRss = 150 * 1048576; // 150MB baseline
@@ -1010,7 +976,7 @@ describe('native memory leak detection', () => {
   });
 
   afterEach(() => {
-    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
     process.uptime = originalUptime;
     process.memoryUsage = originalMemoryUsage;
   });
@@ -1038,10 +1004,7 @@ describe('native memory leak detection', () => {
    * We use Jest's fake timers to advance time.
    */
   function createTestReporter() {
-    return createReporter({
-      crashReportEnabled: true,
-      crashReportRateLimit: 50,
-    });
+    return createReporter({});
   }
 
   test('does not fire alert when process uptime < 2 minutes', async () => {
@@ -1058,7 +1021,7 @@ describe('native memory leak detection', () => {
     await reporter.stop();
 
     // No leak reports should have been sent (uptime too low)
-    const leakReports = fetchCalls.filter(c => c.body?.type === 'leak:native-memory');
+    const leakReports = warnCalls.filter(c => c.body?.type === 'leak:native-memory');
     expect(leakReports.length).toBe(0);
   });
 
@@ -1081,7 +1044,7 @@ describe('native memory leak detection', () => {
     await reporter.stop();
 
     // The first breach should NOT trigger an alert (needs 3 consecutive)
-    const leakReports = fetchCalls.filter(c => c.body?.type === 'leak:native-memory');
+    const leakReports = warnCalls.filter(c => c.body?.type === 'leak:native-memory');
     expect(leakReports.length).toBe(0);
   });
 
@@ -1128,7 +1091,7 @@ describe('native memory leak detection', () => {
     await reporter.stop();
 
     // No alerts should have fired (never hit 3 consecutive)
-    const leakReports = fetchCalls.filter(c => c.body?.type === 'leak:native-memory');
+    const leakReports = warnCalls.filter(c => c.body?.type === 'leak:native-memory');
     expect(leakReports.length).toBe(0);
   });
 
@@ -1148,7 +1111,7 @@ describe('native memory leak detection', () => {
     return new Promise(resolve => {
       setTimeout(async () => {
         await reporter.stop();
-        const leakReports = fetchCalls.filter(c => c.body?.type === 'leak:native-memory');
+        const leakReports = warnCalls.filter(c => c.body?.type === 'leak:native-memory');
         expect(leakReports.length).toBe(0);
         resolve();
       }, 100);

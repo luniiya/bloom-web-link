@@ -26,10 +26,10 @@ describe('version synchronization', () => {
     await writeFile(join(fixture, 'openclaw.plugin.json'), JSON.stringify({ version: '1.0.0' }));
     await writeFile(join(fixture, 'mcp', 'package.json'), JSON.stringify({ version: '1.0.0' }));
     await writeFile(join(fixture, 'mcp', 'package-lock.json'), JSON.stringify({
-      name: '@askjo/bloom-web-link-mcp',
+      name: '@luniiya/bloom-web-link-mcp',
       version: '1.0.0',
       lockfileVersion: 3,
-      packages: { '': { name: '@askjo/bloom-web-link-mcp', version: '1.0.0' } },
+      packages: { '': { name: '@luniiya/bloom-web-link-mcp', version: '1.0.0' } },
     }));
 
     await execFile(process.execPath, [join(fixture, 'scripts', 'sync-version.js')]);

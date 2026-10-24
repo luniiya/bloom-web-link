@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 const dir = fs.mkdtempSync('/tmp/bwl-idle-test-');
 // Shorten only the two cleanup intervals; execute the production callbacks.
 fs.writeFileSync(dir + '/timers.mjs', `const interval = globalThis.setInterval; globalThis.setInterval = (fn, ms, ...args) => interval(fn, ms === 60000 && /SESSION_TIMEOUT_MS|tabLifetime/.test(String(fn)) ? 100 : ms, ...args);`);
-const server = spawn('node', ['--import', dir + '/timers.mjs', '/app/server.js'], { cwd: '/app', env: { ...process.env, BWL_PORT: '9391', PORT: '9391', BWL_BIND_HOST: '127.0.0.1', SESSION_TIMEOUT_MS: '700', TAB_INACTIVITY_MS: '700', BWL_PROFILE_DIR: dir + '/profiles', BWL_ACCESS_KEY: '', BWL_CRASH_REPORT_ENABLED: 'false' }, stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn('node', ['--import', dir + '/timers.mjs', '/app/server.js'], { cwd: '/app', env: { ...process.env, BWL_PORT: '9391', PORT: '9391', BWL_BIND_HOST: '127.0.0.1', SESSION_TIMEOUT_MS: '700', TAB_INACTIVITY_MS: '700', BWL_PROFILE_DIR: dir + '/profiles', BWL_ACCESS_KEY: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = ''; server.stdout.on('data', b => { logs = (logs + b).slice(-30000); }); server.stderr.on('data', b => { logs = (logs + b).slice(-30000); });
 const fixture = http.createServer((_, res) => res.end('<!doctype html><p class="incoming">old</p>'));
 await new Promise(r => fixture.listen(0, '127.0.0.1', r));

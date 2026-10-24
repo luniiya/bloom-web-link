@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Release script for @askjo/bloom-web-link
+# Release script for @luniiya/bloom-web-link
 # Usage: ./release.sh [patch|minor|major]
 # Defaults to patch if no argument given.
 #
@@ -80,6 +80,6 @@ git push origin master --follow-tags
 
 echo ""
 echo "✅ Release v${NEW_VERSION} triggered"
-echo "   CI will publish @askjo/bloom-web-link@${NEW_VERSION} with provenance"
+echo "   CI will publish @luniiya/bloom-web-link@${NEW_VERSION} with provenance"
 echo "   Watch: https://github.com/luniiya/bloom-web-link/actions"
-echo "   Package: https://www.npmjs.com/package/@askjo/bloom-web-link"
+echo "   Package: https://www.npmjs.com/package/@luniiya/bloom-web-link"

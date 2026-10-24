@@ -2,7 +2,7 @@
   "id": "bloom-web-link",
   "name": "Bloom Web Link",
   "description": "Anti-detection browser automation for AI agents using Camoufox (Firefox-based)",
-  "version": "1.16.0",
+  "version": "2.0.0",
   "configSchema": {
     "type": "object",
     "properties": {
@@ -52,16 +52,6 @@
       "accessKey": {
         "type": "string",
         "description": "If set, all routes (except /health) require Authorization: Bearer <key>. Set via BWL_ACCESS_KEY env var."
-      },
-      "crashReportEnabled": {
-        "type": "boolean",
-        "description": "Enable anonymized crash/hang telemetry. Set false to disable all outbound telemetry.",
-        "default": true
-      },
-      "crashReportUrl": {
-        "type": "string",
-        "description": "Telemetry endpoint URL. Override to point to a self-hosted endpoint. Set via BWL_CRASH_REPORT_URL env var.",
-        "default": "https://bwl-telemetry.askjo.workers.dev/report"
       }
     },
     "additionalProperties": false
@@ -105,13 +95,6 @@
     "accessKey": {
       "label": "Global Access Key (BWL_ACCESS_KEY)",
       "placeholder": "Leave empty for localhost-only access"
-    },
-    "crashReportEnabled": {
-      "label": "Enable Telemetry"
-    },
-    "crashReportUrl": {
-      "label": "Telemetry Endpoint URL",
-      "placeholder": "https://bwl-telemetry.askjo.workers.dev/report"
     }
   },
   "contracts": {

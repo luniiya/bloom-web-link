@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Package-level regression test for @askjo/bloom-web-link-mcp.
+// Package-level regression test for @luniiya/bloom-web-link-mcp.
 // Packs mcp/, installs that tarball in an empty directory, then runs the same
 // MCP handshake smoke test against the installed server. This catches imports
 // that accidentally reach outside the published package.
@@ -31,7 +31,7 @@ try {
   const bin = join(installDir, 'node_modules', '.bin', 'bloom-web-link-mcp');
   await access(bin);
 
-  const server = join(installDir, 'node_modules', '@askjo', 'bloom-web-link-mcp', 'server.mjs');
+  const server = join(installDir, 'node_modules', '@luniiya', 'bloom-web-link-mcp', 'server.mjs');
   await execFile(process.execPath, [join(ROOT, 'scripts', 'test-mcp.mjs')], {
     cwd: ROOT,
     env: {
@@ -43,7 +43,7 @@ try {
       BWL_MCP_SERVER: server,
     },
   });
-  console.log('packed @askjo/bloom-web-link-mcp smoke test passed');
+  console.log('packed @luniiya/bloom-web-link-mcp smoke test passed');
 } finally {
   if (tarball) await rm(tarball, { force: true });
   await rm(testDir, { recursive: true, force: true });

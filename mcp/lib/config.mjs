@@ -4,7 +4,7 @@ import { join } from 'node:path';
 /**
  * Load only the environment settings the standalone MCP adapter requires.
  * This module intentionally does not import the core server configuration so
- * @askjo/bloom-web-link-mcp can run without the core package installed.
+ * @luniiya/bloom-web-link-mcp can run without the core package installed.
  */
 export function loadMcpConfig() {
   return {

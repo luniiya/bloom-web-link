@@ -36,7 +36,7 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Version from this package's own package.json (single source — no hardcoded
-// duplicate). mcp/ is an independently installable package (@askjo/bloom-web-link-mcp)
+// duplicate). mcp/ is an independently installable package (@luniiya/bloom-web-link-mcp)
 // with its own manifest, so this reads locally rather than the parent repo's.
 const VERSION = JSON.parse(
   readFileSync(join(__dirname, "package.json"), "utf8")

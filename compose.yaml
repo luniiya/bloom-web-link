@@ -20,7 +20,6 @@ services:
       # Local interactive browsing must survive ordinary pauses and compaction.
       SESSION_TIMEOUT_MS: ${SESSION_TIMEOUT_MS:-0}
       TAB_INACTIVITY_MS: ${TAB_INACTIVITY_MS:-0}
-      BWL_CRASH_REPORT_ENABLED: ${BWL_CRASH_REPORT_ENABLED:-false}
     volumes:
       - bwl-data:/root/.bwl
       # Live-edit the dashboard: changes apply on browser reload, no rebuild.

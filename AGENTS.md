@@ -169,7 +169,7 @@ docker run -p 9377:9377 bloom-web-link
 - `lib/persistence.js` - Atomic storage state read/write
 - `lib/inflight.js` - Inflight request coalescing
 - `lib/tmp-cleanup.js` - Orphaned temp file cleanup
-- `lib/reporter.js` - Crash/hang reporter with anonymization + GitHub App auth (see README "Crash Reporter" for setup)
+- `lib/reporter.js` - Local crash/hang diagnostics, tab health tracking, anonymization (log only, no network)
 - `Dockerfile` - Production container with default plugin deps pre-installed
 
 ## OpenAPI Spec (REQUIRED for route changes)
@@ -237,16 +237,7 @@ app.post('/tabs/:tabId/click', async (req, res) => {
 
 ## Telemetry
 
-**No credentials are embedded in this package.** `lib/reporter.js` is a stateless HTTP client that sends anonymized crash/hang telemetry to a Cloudflare Worker endpoint (`bwl-telemetry.askjo.workers.dev`). The endpoint holds the GitHub App credentials as environment secrets -- see `workers/crash-reporter/index.ts`. The source is in-repo and auditable.
-
-- **Architecture**: `lib/reporter.js` (client, no secrets, no `fs`) -> POST -> Cloudflare Worker endpoint -> GitHub Issues
-- **`lib/reporter.js`** has ZERO credentials, ZERO private keys, ZERO `fs` imports. It only does `fetch()` to the telemetry endpoint.
-- **`lib/resources.js`** handles `fs`-based resource snapshots (reading /proc on Linux) -- separated from reporter.js so no file-read + network-send pattern exists in any single file. No `child_process` import.
-- **Anonymization** is in `lib/reporter.js` L28-290 -- text scrubbing (`anonymize()`), URL anonymization (`createUrlAnonymizer()`), and tab health tracking (`createTabHealthTracker()`)
-- **Public domain list** (~120 entries) determines which domains are shown verbatim vs HMAC-hashed
-- **Tests**: `tests/unit/crashRelay.test.js` (telemetry client), `tests/unit/crashRelayWorker.test.js` (worker contract), `tests/unit/noSecrets.test.js` (asserts no key material in shipped files)
-- Self-hosted endpoint: see README "Self-hosted telemetry endpoint" section
-- Disable with `BWL_CRASH_REPORT_ENABLED=false`
+There is none. Nothing in this project phones home: no crash relay, no error tracking, no analytics. `lib/reporter.js` only writes local diagnostics to the log, and keeps the tab-health and anonymizing helpers. Do not add outbound reporting.
 
 ## Code Separation Conventions
 

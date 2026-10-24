@@ -119,6 +119,7 @@ ENV BWL_MCP_PORT=9377
 ENV BWL_WEB_PORT=6080
 ENV BWL_INTERNAL_PORT=9378
 
+LABEL org.opencontainers.image.source="https://github.com/luniiya/bloom-web-link"
 EXPOSE 9377 6080
 
 CMD ["bun", "run", "src/index.ts"]

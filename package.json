@@ -1,6 +1,6 @@
 {
-  "name": "@askjo/bloom-web-link",
-  "version": "1.16.0",
+  "name": "@luniiya/bloom-web-link",
+  "version": "2.0.0",
   "description": "Headless anti-detection browser for AI agents over MCP - element refs, session isolation, and a live dashboard",
   "type": "module",
   "main": "server.js",

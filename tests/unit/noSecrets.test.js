@@ -42,35 +42,10 @@ describe('no embedded secrets in distributed files', () => {
     expect(config).not.toContain('LS0tLS1CRUdJTi');
   });
 
-  test('worker source has no hardcoded key blobs', () => {
-    const source = readFileSync(join(__dirname, '../../workers/crash-reporter/index.ts'), 'utf-8');
-    expect(source).not.toContain('LS0tLS1CRUdJTi'); // base64 "-----BEGIN"
-    expect(source).not.toMatch(/[A-Za-z0-9+/]{100,}={0,2}/);
-  });
-
-  test('worker source uses env secrets', () => {
-    const source = readFileSync(join(__dirname, '../../workers/crash-reporter/index.ts'), 'utf-8');
-    expect(source).toContain('env.GH_APP_ID');
-    expect(source).toContain('env.GH_INSTALL_ID');
-    expect(source).toContain('env.GH_PRIVATE_KEY');
-  });
-
-  test('worker source has required routes and features', () => {
-    const source = readFileSync(join(__dirname, '../../workers/crash-reporter/index.ts'), 'utf-8');
-    expect(source.length).toBeGreaterThan(1000);
-    expect(source).toContain('export default');
-    expect(source).toContain('url.pathname === "/report"');
-    expect(source).toContain('url.pathname === "/source"');
-    expect(source).toContain('url.pathname === "/health"');
-    expect(source).toContain('Access-Control-Allow-Origin');
-    expect(source).toContain('CF-Connecting-IP');
-    expect(source).toContain('isDuplicate(payload.signature)');
-    expect(source).toContain('__COMMIT_SHA__');
-    expect(source).toContain('__SOURCE_SHA256__');
-  });
-
-  test('wrangler.toml has correct worker name', () => {
-    const toml = readFileSync(join(__dirname, '../../workers/crash-reporter/wrangler.toml'), 'utf-8');
-    expect(toml).toContain('name = "bwl-telemetry"');
+  test('lib/reporter.js makes no network calls (no telemetry)', () => {
+    const source = readFileSync(join(__dirname, '../../lib/reporter.js'), 'utf-8');
+    expect(source).not.toMatch(/\bfetch\s*\(/);
+    expect(source).not.toMatch(/from\s+['"](node:)?https?['"]/);
+    expect(source).not.toContain('askjo');
   });
 });

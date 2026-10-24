@@ -56,7 +56,6 @@ import { resolveUploadPaths } from './lib/upload-paths.js';
 import { acquirePageLease, hasActivePageLeases, isPageLeased, releasePageLease, setLeasedPage } from './lib/page-lease.js';
 import { createReporter, createTabHealthTracker, collectResourceSnapshot, classifyProxyError, browserProcessTreeRssMb, browserProcessNameRssMb } from './lib/reporter.js';
 import { mountDocs } from './lib/openapi.js';
-import { initSentry, captureException as sentryCaptureException, setupExpressErrorHandler as setupSentryErrorHandler, flush as sentryFlush } from './lib/sentry.js';
 import { prepareExternalCamoufoxExecutable } from './lib/camoufox-executable.js';
 import { createVirtualDisplayRegistry } from './lib/plugin-capabilities.js';
 import { killProcessIds } from './lib/browser-processes.js';
@@ -85,8 +84,6 @@ function rememberClosed(userId, tabId, tab, reason, sessionKey) {
 import { readFileSync } from 'fs';
 const _pkgVersion = (() => { try { return JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version; } catch { return 'unknown'; } })();
 
-// --- Sentry error tracking ---
-initSentry({ ...CONFIG, version: _pkgVersion });
 const reporter = createReporter({ ...CONFIG, version: _pkgVersion });
 function _countTabs() {
   let total = 0;
@@ -390,18 +387,6 @@ function sendError(res, err, extraFields = {}) {
   if (recovery) body.recovery = recovery;
   if (code === 'ambiguous_selector') body.hint = 'Pass nth (0-based) to bwl_click to click the exact match instead of retrying the same selector.';
   if (err instanceof StaleRefsError) body.ref = err.ref;
-  if (status >= 500 && !err.statusCode && !recovery) {
-    const req = res.req;
-    const userId = req?.query?.userId || req?.body?.userId;
-    sentryCaptureException(err, {
-      path: req?.originalUrl,
-      route: req?.route?.path,
-      method: req?.method,
-      action: req ? actionFromReq(req) : undefined,
-      userIdHash: hashIdentifier(userId),
-      reqId: req?.reqId,
-    });
-  }
   res.status(status).json(body);
 }
 
@@ -8759,14 +8744,10 @@ process.on('uncaughtException', (err) => {
   pluginEvents.emit('browser:error', { error: err });
   log('error', 'uncaughtException', { error: err.message, stack: err.stack });
   reporter.reportCrash(err, { resourceOpts: _resourceOpts() });
-  sentryCaptureException(err, { type: 'uncaughtException' });
-  sentryFlush(2000).finally(() => process.exit(1));
+  process.exit(1);
 });
 process.on('unhandledRejection', (reason) => {
   log('error', 'unhandledRejection', { reason: String(reason) });
-  if (reason instanceof Error) {
-    sentryCaptureException(reason, { type: 'unhandledRejection' });
-  }
 });
 
 // Graceful shutdown
@@ -8801,7 +8782,6 @@ async function gracefulShutdown(signal) {
 
   await profileRuntimes.closeAll(`shutdown:${signal}`);
   await closeBrowserFully(`shutdown:${signal}`);
-  await sentryFlush(2000);
   process.exit(0);
 }
 
@@ -8848,8 +8828,6 @@ const loadedPlugins = await loadPlugins(app, pluginCtx);
 // --- OpenAPI docs (after all routes are registered) ---
 mountDocs(app);
 
-// --- Sentry Express error handler (after all routes, before app.listen) ---
-setupSentryErrorHandler(app);
 
 const server = app.listen(PORT, CONFIG.bindHost || undefined, async () => {
   startMemoryReporter();

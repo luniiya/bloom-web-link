@@ -8,9 +8,26 @@ A headless, anti-detection browser built for AI agents. It runs in Docker and gi
 
 ## Quick start
 
-bwl only runs in Docker.
+bwl only runs in Docker. Pick one of two ways.
+
+### Option 1: pull the prebuilt image (recommended)
+
+No clone and no build. The image is published to GitHub Container Registry (linux/amd64) with every release.
 
 ```bash
+docker run -d --name bwl --restart unless-stopped --shm-size=2gb \
+  -p 127.0.0.1:9377:9377 -p 127.0.0.1:6080:6080 \
+  -v bwl-data:/root/.bwl \
+  ghcr.io/luniiya/bloom-web-link:latest
+```
+
+Pin a version instead of `latest` for reproducible setups, e.g. `ghcr.io/luniiya/bloom-web-link:2.0.0`. To update: `docker pull ghcr.io/luniiya/bloom-web-link:latest`, then `docker rm -f bwl` and run the command again. Your data stays in the `bwl-data` volume.
+
+### Option 2: clone and build
+
+```bash
+git clone https://github.com/luniiya/bloom-web-link.git
+cd bloom-web-link
 docker compose up -d --build
 ```
 
@@ -22,19 +39,20 @@ make down    # stop and remove it
 make reset   # rebuild from scratch
 ```
 
-Both bind to `127.0.0.1` only. Browser data (cookies, profiles) is kept in the `bwl-data` volume.
+Everything binds to `127.0.0.1` only. Browser data (cookies, profiles) is kept in the `bwl-data` volume.
 
 ## Connect an agent
 
-Point any MCP client that speaks Streamable HTTP at `/mcp`.
+1. Open the dashboard at `http://localhost:6080`.
+2. Pick the browser profile the agent should use, then press **Connect your agent**. This copies a ready-made setup prompt to your clipboard (the eye icon next to it previews the prompt).
+3. Paste it into a chat with your agent. It will figure out the rest: adding the MCP server, picking up its profile, and starting to browse.
 
-**Claude Code**
+Prefer to wire it up by hand? Point any MCP client that speaks Streamable HTTP at `http://localhost:9377/mcp`.
 
 ```bash
+# Claude Code
 claude mcp add --transport http bloom-web-link http://localhost:9377/mcp
 ```
-
-**Other clients** (`.mcp.json`, Cursor, etc.)
 
 ```json
 {
@@ -128,7 +146,6 @@ Set these in the environment (or a `.env` file next to `compose.yaml`):
 | `BWL_WEB_PORT` | `6080` | Dashboard port |
 | `BWL_PUBLIC_MCP_URL` | _derived_ | MCP URL shown in the dashboard's "Connect your agent" prompt. Defaults to the dashboard's host with `BWL_MCP_PORT`; set it when agents reach bwl through a proxy or another hostname |
 | `BWL_LOCALE` / `BWL_TIMEZONE` | _auto_ | Browser locale and timezone |
-| `BWL_CRASH_REPORT_ENABLED` | `false` | Anonymized crash reporting |
 | `BWL_MAX_PROFILE_BROWSERS` | `4` | Profile browsers allowed to run at once |
 | `BWL_BURNER_TTL_DAYS` | `30` | Days without use before a burner profile is wiped (`0` keeps them) |
 
