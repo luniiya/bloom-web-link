@@ -34,6 +34,25 @@ describe('removeXvfbDisplayFiles', () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
+  it('leaves a display that a newer Xvfb has claimed', () => {
+    const root = makeTmpDir();
+    const socketDir = path.join(root, '.X11-unix');
+    fs.mkdirSync(socketDir);
+    const socket = path.join(socketDir, 'X99');
+    const lock = path.join(root, '.X99-lock');
+    fs.writeFileSync(socket, 'new socket');
+    fs.writeFileSync(lock, '      1000\n');
+
+    removeXvfbDisplayFiles(99, { socketDir, lockDir: root, ownerPid: 999 });
+    expect(fs.existsSync(socket)).toBe(true);
+    expect(fs.existsSync(lock)).toBe(true);
+
+    removeXvfbDisplayFiles(99, { socketDir, lockDir: root, ownerPid: 1000 });
+    expect(fs.existsSync(socket)).toBe(false);
+    expect(fs.existsSync(lock)).toBe(false);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
   it('does nothing for an invalid display number', () => {
     const root = makeTmpDir();
     const socketDir = path.join(root, '.X11-unix');

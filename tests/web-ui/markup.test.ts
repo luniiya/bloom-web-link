@@ -125,9 +125,14 @@ describe("profiles", () => {
     expect(withProfiles.match(/class="profile-delete"/g)).toHaveLength(2);
   });
 
-  test("profiles can be created from the list", () => {
-    const withCreate = renderToStaticMarkup(h(GridView, { hidden: false, state: { ...state, profiles }, open: [], closed: [], onCreateProfile: async () => true }));
-    expect(withCreate).toContain('id="profile-create"');
+  test("profiles are created and re-fingerprinted through a popup", () => {
+    const withCreate = renderToStaticMarkup(h(GridView, { hidden: false, state: { ...state, profiles: profiles.map((p) => ({ ...p, screen: { width: 1920, height: 1080 } })) }, open: [], closed: [],
+      onCreateProfile: async () => true, onRegenerateProfile: async () => true }));
+    expect(withCreate).toContain('id="new-profile-button"');
+    expect(withCreate).toContain('<dialog id="profile-dialog"');
+    expect(withCreate).toContain('<option value="1920x1080" selected="">1920 × 1080 (default)</option>');
+    expect(withCreate).toContain("1920×1080");
+    expect(withCreate.match(/class="profile-action"/g)).toHaveLength(profiles.length);
   });
 
   test("the section is omitted when there are no profiles", () => {

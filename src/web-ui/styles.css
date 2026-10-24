@@ -195,13 +195,34 @@ code { color: var(--accent-text); }
 #lifetime-status, #navigation-error { padding: 8px 16px; margin: 0; font-size: 13px; }
 #lifetime-status { color: var(--muted-strong); }
 #navigation-error { color: #e5484d; }
-.profile-create { display: flex; gap: 8px; margin-top: 10px; font-size: 12px; }
-.profile-create input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text); font: 12px ui-monospace, monospace; outline: none; transition: border-color .15s, box-shadow .15s; }
-.profile-create input::placeholder { color: var(--muted); }
-.profile-create input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
-.profile-create input:user-invalid { border-color: #e5484d; }
-.profile-create input { flex: 1; min-width: 0; max-width: 320px; }
-.profile-create button:disabled { opacity: .5; cursor: default; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.section-head .section-heading { margin: 0; }
+.new-profile { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 10px; border: 1px dashed color-mix(in srgb, var(--accent) 60%, var(--border)); border-radius: 999px; background: transparent; color: var(--accent-text); font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s, border-style .15s, transform .12s; }
+.new-profile > span { font-size: 15px; line-height: 1; transition: transform .25s cubic-bezier(.3, 1.6, .5, 1); }
+.new-profile:hover { border-style: solid; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.new-profile:hover > span { transform: rotate(90deg); }
+.new-profile:active { transform: scale(.95); }
+.profile-screen { color: var(--muted-strong); white-space: nowrap; font: 11px ui-monospace, monospace; }
+.profile-action { padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--muted-strong); font: inherit; white-space: nowrap; cursor: pointer; }
+.profile-action:hover { border-color: var(--accent); color: var(--accent-text); }
+.prompt-dialog.profile-dialog { width: min(440px, calc(100vw - 32px)); }
+.profile-dialog .prompt-dialog-body { gap: 16px; }
+.profile-dialog-note { margin: 0; color: var(--muted-strong); font-size: 13px; line-height: 1.5; }
+.profile-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.profile-field-label { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; }
+.profile-field-hint { color: var(--muted); font-size: 11.5px; }
+.profile-input { width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); color: var(--text); font: 13px ui-monospace, monospace; outline: none; transition: border-color .15s, box-shadow .15s; }
+.profile-input::placeholder { color: var(--muted); }
+.profile-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.profile-input:user-invalid { border-color: #e5484d; }
+.segmented { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-self: flex-start; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.segmented button { padding: 6px 14px; border: 0; border-radius: 7px; background: transparent; color: var(--muted-strong); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: background .15s, color .15s; }
+.segmented button[aria-checked="true"] { background: var(--accent); color: #fff; box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent); }
+.profile-row-fields { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
+.profile-field-hint-tight { margin-top: -10px; }
+.profile-dialog-foot { justify-content: flex-end; }
+.profile-dialog-foot .profile-delete { padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+.prompt-dialog-copy:disabled { opacity: .5; cursor: default; transform: none; background: var(--surface-soft); color: var(--accent-text); }
 
 /* --- Connect your agent (header) --- */
 .connect-agent { display: flex; align-items: center; gap: 4px; margin-right: 8px; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-soft); }

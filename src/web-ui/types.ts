@@ -5,6 +5,8 @@ export type ClosedRecord = Tab & { userId: string; closedAt: number; reason: str
 /** `profile` is set when the session belongs to a global browser profile. */
 export type Session = { userId: string; lastAccess: string; tabs: Tab[]; profile?: string | null };
 export type Profile = { id: string; name: string; kind: "named" | "burner"; createdAt: number; lastUsedAt: number; userAgent: string | null; browserRunning: boolean; tabs: number; default?: boolean;
+  screen?: { width: number; height: number } | null;
+  os?: "windows" | "macos" | "linux" | null; locale?: string | null; timezone?: string | null;
   /** Last unexpected stop (crash, kill, failed launch) since its last good launch. */
   browserError?: { at: number; reason: string } | null };
 export type State = { running: boolean; browserError?: string | null; generatedAt: string; sessions: Session[]; closedTabs?: ClosedRecord[]; profiles?: Profile[] };

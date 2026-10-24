@@ -110,25 +110,17 @@ describe('Security', () => {
   });
 
   describe('Resource limits', () => {
-    test('recycles oldest tab when session limit reached', async () => {
+    test('opening more tabs keeps the older ones open (no silent recycling)', async () => {
       const client = createClient(serverUrl);
       const tabs = [];
       try {
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 11; i++) {
           const result = await client.createTab(`${testSiteUrl}/pageA`);
           tabs.push(result.tabId);
         }
-        // 11th tab should succeed by recycling the oldest
-        const result = await client.createTab(`${testSiteUrl}/pageA`);
-        expect(result.tabId).toBeDefined();
-        // The recycled (oldest) tab should no longer be accessible
-        try {
-          await client.getSnapshot(tabs[0]);
-          // If it doesn't throw, the tab still exists -- that's unexpected but not fatal
-        } catch (err) {
-          // Expected: oldest tab was recycled
-          expect(err.status).toBe(410);
-        }
+        // Tabs stay open until closed: the first tab is still there.
+        const snapshot = await client.getSnapshot(tabs[0]);
+        expect(snapshot).toBeDefined();
       } finally {
         await client.cleanup();
       }

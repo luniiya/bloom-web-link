@@ -71,6 +71,8 @@ For hosts that only support stdio, a thin adapter lives in [`mcp/`](mcp/README.m
 | `bwl_element_state` | Computed style and ARIA state for selectors |
 | `bwl_evaluate` | Run JavaScript in the page |
 | `bwl_batch` | Run several actions in one call |
+| `bwl_save_page` | Save the current page or document (like Ctrl+S) into the tab's downloads |
+| `bwl_downloads` | List a tab's downloaded files (with `curl`-able URLs) or fetch one inline |
 | `bwl_list_tabs` | List open tabs (yours plus all profile tabs) |
 | `bwl_create_profile` | Create a named or burner browser profile |
 | `bwl_list_profiles` | List browser profiles |
@@ -89,6 +91,14 @@ A **profile** is a separate Camoufox browser with its own fingerprint (user agen
 - **Burner profiles** (`bwl_create_profile({burner: true})`, or `bwl_create_tab({profile: "burner"})`) get a generated name. They're wiped, along with their history, after `BWL_BURNER_TTL_DAYS` days (default 30) without use.
 
 Open a tab in a profile with `bwl_create_tab({url, profile: "shopping"})`. All other tab tools work on profile tabs as usual. The fingerprint is created once and reused on every launch, so a profile stays the same "machine" across restarts: same user agent, screen, CPU count, WebGL GPU and font/audio noise. One exception: Camoufox re-rolls canvas noise for every new browser context, so the canvas hash is stable while a profile's session is open but changes after its browser restarts.
+
+Each profile can also set (in the dashboard's **New profile** popup, or as `bwl_create_profile` arguments):
+
+- `screen`: the spoofed monitor as `WIDTHxHEIGHT`, default `1920x1080` at 1x. The window is reported as maximized above the OS taskbar (Windows 48px bottom, macOS 25px menu bar, Linux 32px top bar).
+- `os`: `windows`, `macos` or `linux` for the user agent, platform and fonts. Defaults to the host OS. The TCP/IP stack is still the host's, so pair a non-host OS with a proxy if a site checks that.
+- `locale` and `timezone` (e.g. `fr-FR`, `Europe/Paris`): they override the proxy's geoip and `BWL_LOCALE` / `BWL_TIMEZONE`.
+
+**New fingerprint** on a profile row (or `POST /profiles/:profile/fingerprint`) closes its browser and gives it a new machine identity with these settings. Cookies and storage are kept.
 
 Each profile with open tabs runs its own browser process, which uses roughly 300–500 MB of RAM. It shuts down after `BROWSER_IDLE_TIMEOUT_MS` once its tabs are closed, and `BWL_MAX_PROFILE_BROWSERS` caps how many can run at once.
 
@@ -149,9 +159,11 @@ bwl started as a fork of Jo Inc's Camoufox browser server and is built on [Camou
 
 ### Keeping interactive tabs safe
 
-The local Docker Compose setup disables automatic session and tab idle expiry by
-default (`SESSION_TIMEOUT_MS=0`, `TAB_INACTIVITY_MS=0`). Set positive milliseconds
- to opt into idle cleanup. Outside Compose, tab idle cleanup defaults to 30 minutes and session expiry to 10 minutes; protected tabs bypass both timers.
+Tabs stay open until they are closed. Sessions and tabs never expire from idleness
+by default (`SESSION_TIMEOUT_MS=0`, `TAB_INACTIVITY_MS=0`); set positive milliseconds
+to opt into idle cleanup. At the tab limit (`MAX_TABS_PER_SESSION`, default 25, and
+`MAX_TABS_GLOBAL`, default 50) a new tab is refused with a "close a tab first" error;
+set `BWL_RECYCLE_TABS=true` to close the least-used tab instead.
 A tab being viewed in the dashboard receives a short renewable viewing lease.
 Use **Keep open**, or `bwl_keep_open({tabId})`, to protect it even when the dashboard
 is hidden. Explicit close still works. Automatic recycling, idle expiry and

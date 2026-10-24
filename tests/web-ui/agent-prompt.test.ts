@@ -26,6 +26,11 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("`AGENTS.md` or `CLAUDE.md`");
   });
 
+  test("covers saving pages and pulling downloaded files", () => {
+    expect(prompt).toContain("bwl_save_page({ tabId })");
+    expect(prompt).toContain("bwl_downloads({ tabId, downloadId })");
+  });
+
   test("auth adds a placeholder header, never a real key", () => {
     const secured = buildAgentPrompt({ ...base, authRequired: true });
     expect(secured).toContain('--header "Authorization: Bearer <BWL_ACCESS_KEY>"');

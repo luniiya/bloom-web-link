@@ -7,7 +7,7 @@ describe('Tab Recycling', () => {
   let testSiteUrl;
 
   beforeAll(async () => {
-    await startServer(0, { MAX_TABS_PER_SESSION: '5', MAX_TABS_GLOBAL: '50' });
+    await startServer(0, { MAX_TABS_PER_SESSION: '5', MAX_TABS_GLOBAL: '50', BWL_RECYCLE_TABS: 'true' });
     serverUrl = getServerUrl();
     await startTestSite();
     testSiteUrl = getTestSiteUrl();

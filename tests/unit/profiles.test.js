@@ -2,7 +2,7 @@ import { describe, test, expect, jest, beforeEach, afterEach } from '@jest/globa
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createProfileRegistry, profileUserId, profileIdFromUserId, pinnableConfig, camoufoxConfigFromEnv } from '../../lib/profiles.js';
+import { createProfileRegistry, profileUserId, profileIdFromUserId, pinnableConfig, camoufoxConfigFromEnv, parseScreen, fitScreen, parseOS, parseIdentity } from '../../lib/profiles.js';
 import { createProfileRuntimes } from '../../lib/profile-runtimes.js';
 import { createTabHistory } from '../../lib/tab-history.js';
 import { excludeProcessTrees, excludeProfileBrowsers, snapshotOwnedBrowserProcesses, PROFILE_ENV_KEY } from '../../lib/process-ownership.js';
@@ -110,6 +110,69 @@ describe('profile registry', () => {
   test('user id mapping round-trips', () => {
     expect(profileIdFromUserId(profileUserId('abc'))).toBe('abc');
     expect(profileIdFromUserId('mcp-123')).toBeNull();
+  });
+});
+
+describe('profile screens', () => {
+  test('parses WIDTHxHEIGHT, defaults to 1080p, and rejects nonsense', () => {
+    expect(parseScreen()).toEqual({ width: 1920, height: 1080 });
+    expect(parseScreen('2560X1440')).toEqual({ width: 2560, height: 1440 });
+    expect(parseScreen({ width: 1366, height: 768 })).toEqual({ width: 1366, height: 768 });
+    for (const bad of ['1920', 'axb', '800x600', '9000x9000']) {
+      expect(() => parseScreen(bad)).toThrow(expect.objectContaining({ statusCode: 400 }));
+    }
+  });
+
+  test('fits a maximized window inside the screen minus the taskbar', () => {
+    const win = fitScreen({ screen: { colorDepth: 24, devicePixelRatio: 2 } }, { width: 1920, height: 1080 }, 'windows').screen;
+    expect(win).toMatchObject({ width: 1920, height: 1080, availHeight: 1032, availTop: 0, outerWidth: 1936, outerHeight: 1048, screenX: -8, screenY: -8, devicePixelRatio: 1, colorDepth: 24 });
+    expect(win.innerHeight).toBeLessThan(win.availHeight);
+
+    const mac = fitScreen({ screen: {} }, { width: 1920, height: 1080 }, 'macos').screen;
+    expect(mac).toMatchObject({ availHeight: 1055, availTop: 25, outerHeight: 1055, screenX: 0, screenY: 25 });
+  });
+
+  test('create and regenerate pass the screen through and reset the pinned config', () => {
+    const generate = jest.fn(({ screen }) => ({ navigator: { userAgent: `UA-${Math.random()}` }, screen }));
+    const r = createProfileRegistry({ file: path.join(folder, 'profiles.json'), generateFingerprint: generate, now: () => clock });
+    const created = r.create({ name: 'laptop', screen: '1366x768' });
+    expect(generate).toHaveBeenLastCalledWith({ kind: 'named', screen: { width: 1366, height: 768 }, os: null });
+    expect(r.describe(created).screen).toEqual({ width: 1366, height: 768 });
+    r.pin(created.id, { 'canvas:seed': 1 });
+
+    const oldAgent = created.fingerprint.navigator.userAgent;
+    const fresh = r.regenerate(created.id, {});
+    expect(fresh.fingerprint.navigator.userAgent).not.toBe(oldAgent);
+    expect(fresh.fingerprint.screen).toEqual({ width: 1920, height: 1080 });
+    expect(registry().get('laptop').pinnedConfig).toBeNull();
+    expect(r.regenerate('missing')).toBeNull();
+    expect(() => r.create({ name: 'tiny', screen: '640x480' })).toThrow(expect.objectContaining({ statusCode: 400 }));
+  });
+});
+
+describe('profile identity options', () => {
+  test('validates os, locale and timezone', () => {
+    expect(parseOS()).toBeNull();
+    expect(parseOS('Windows')).toBe('windows');
+    expect(() => parseOS('android')).toThrow(expect.objectContaining({ statusCode: 400 }));
+    expect(parseIdentity({})).toEqual({ locale: null, timezone: null });
+    expect(parseIdentity({ locale: 'fr-fr', timezone: 'europe/paris' })).toEqual({ locale: 'fr-FR', timezone: 'Europe/Paris' });
+    expect(() => parseIdentity({ locale: 'not a locale' })).toThrow(expect.objectContaining({ statusCode: 400 }));
+    expect(() => parseIdentity({ timezone: 'Mars/Olympus' })).toThrow(expect.objectContaining({ statusCode: 400 }));
+  });
+
+  test('profiles store them, and a new fingerprint keeps the os unless told otherwise', () => {
+    const generate = jest.fn(() => ({ navigator: { userAgent: 'UA' }, screen: { width: 1920, height: 1080 } }));
+    const r = createProfileRegistry({ file: path.join(folder, 'profiles.json'), generateFingerprint: generate, now: () => clock });
+    const created = r.create({ name: 'paris', os: 'windows', locale: 'fr-FR', timezone: 'Europe/Paris' });
+    expect(generate).toHaveBeenLastCalledWith(expect.objectContaining({ os: 'windows' }));
+    expect(r.describe(created)).toMatchObject({ os: 'windows', locale: 'fr-FR', timezone: 'Europe/Paris' });
+
+    r.regenerate(created.id, { locale: 'fr-FR' });
+    expect(generate).toHaveBeenLastCalledWith(expect.objectContaining({ os: 'windows' }));
+    expect(registry().get('paris')).toMatchObject({ os: 'windows', locale: 'fr-FR', timezone: null });
+    r.regenerate(created.id, { os: '' });
+    expect(registry().get('paris').os).toBeNull();
   });
 });
 

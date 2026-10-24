@@ -10,6 +10,19 @@ async function coreFetch(config: ContainerConfig, path: string, init: RequestIni
   return fetch(`http://${config.coreHost}:${config.corePort}${path}`, { ...init, headers });
 }
 
+// Profile identity settings; the core validates their values.
+type IdentityInput = { screen?: unknown; os?: unknown; locale?: unknown; timezone?: unknown };
+const IDENTITY_KEYS = ["screen", "os", "locale", "timezone"] as const;
+
+function badIdentity(input: IdentityInput): string | null {
+  const key = IDENTITY_KEYS.find((name) => input[name] !== undefined && typeof input[name] !== "string");
+  return key ? `${key} must be a string` : null;
+}
+
+function identity(input: IdentityInput): Record<string, string> {
+  return Object.fromEntries(IDENTITY_KEYS.filter((name) => input[name]).map((name) => [name, input[name] as string]));
+}
+
 // Assets are read and the client rebuilt on every request, so edits to
 // src/web-ui (bind-mounted by compose.yaml) show up on reload without a
 // container rebuild. Only the page load pays this — polling hits /api/*.
@@ -52,10 +65,19 @@ export async function startWebUi(config: ContainerConfig): Promise<Bun.Server> {
         return coreFetch(config, "/tabs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: input.userId, sessionKey: input.sessionKey || "default", url: input.url }) });
       }
       if (url.pathname === "/api/profiles/create" && request.method === "POST") {
-        const input = await request.json() as { name?: string; burner?: boolean };
+        const input = await request.json() as { name?: string; burner?: boolean } & IdentityInput;
         if (input.name !== undefined && typeof input.name !== "string") return json({ error: "name must be a string" }, 400);
+        const bad = badIdentity(input);
+        if (bad) return json({ error: bad }, 400);
         if (!input.name && input.burner !== true) return json({ error: "name is required unless burner is true" }, 400);
-        return coreFetch(config, "/profiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: input.name, burner: input.burner === true }) });
+        return coreFetch(config, "/profiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: input.name, burner: input.burner === true, ...identity(input) }) });
+      }
+      if (url.pathname === "/api/profiles/fingerprint" && request.method === "POST") {
+        const input = await request.json() as { profile?: string } & IdentityInput;
+        if (!input.profile || typeof input.profile !== "string") return json({ error: "profile is required" }, 400);
+        const bad = badIdentity(input);
+        if (bad) return json({ error: bad }, 400);
+        return coreFetch(config, `/profiles/${encodeURIComponent(input.profile)}/fingerprint`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(identity(input)) });
       }
       if (url.pathname === "/api/profiles/delete" && request.method === "POST") {
         const input = await request.json() as { profile?: string };

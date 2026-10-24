@@ -45,6 +45,7 @@ import { readCookieFile } from './cookies.mjs';
  * @typedef {Object} CallContext
  * @property {string} userId - Session owner (scopes cookie/storage partition).
  * @property {string} [sessionKey] - Tab partition within a user.
+ * @property {string} [publicBaseUrl] - Origin the agent reaches bwl at (for download fileUrls); defaults to the REST base URL.
  */
 
 const SEARCH_MACROS = [
@@ -357,6 +358,10 @@ export const TOOL_DEFS = [
       properties: {
         name: { type: 'string', description: 'Profile name (letters, digits, "_", "-", "."). Required unless burner is true.' },
         burner: { type: 'boolean', description: 'Create a throwaway burner profile with a generated name' },
+        screen: { type: 'string', description: 'Spoofed monitor size as WIDTHxHEIGHT (default "1920x1080"). The window is sized as maximized above the OS taskbar.' },
+        os: { type: 'string', enum: ['windows', 'macos', 'linux'], description: 'Spoofed operating system (default: the host OS)' },
+        locale: { type: 'string', description: 'Browser locale such as "fr-FR" (default: follows the proxy location)' },
+        timezone: { type: 'string', description: 'IANA timezone such as "Europe/Paris" (default: follows the proxy location)' },
       },
       required: [],
     },
@@ -464,6 +469,35 @@ export const TOOL_DEFS = [
       required: ['tabId', 'actions'],
     },
   },
+  {
+    name: 'bwl_save_page',
+    description:
+      'Save the page or document open in a tab, like Ctrl+S. A PDF, image, CSV or other file open in the tab is saved as the original file ' +
+      "(fetched with the tab's cookies, so logged-in documents work); a normal web page is saved as its current HTML, including changes made by scripts. " +
+      'The file is added to the tab\'s downloads: get it with bwl_downloads (fileUrl for curl, or downloadId for inline content).',
+    inputSchema: {
+      type: 'object',
+      properties: { tabId: { type: 'string', description: 'Tab identifier' } },
+      required: ['tabId'],
+    },
+  },
+  {
+    name: 'bwl_downloads',
+    description:
+      'Get files a tab has downloaded (clicking a download link/button saves the file in the browser). ' +
+      'Without downloadId: lists the downloads with id, filename, MIME type, size and a fileUrl -- save a file to disk with ' +
+      '`curl -fsSL -o <filename> "<fileUrl>"` (add `-H "Authorization: Bearer <BWL_ACCESS_KEY>"` when bwl has an access key). ' +
+      'With downloadId: returns that file inline -- images as an image, small text files as text, anything else as a binary resource (up to 10 MB). ' +
+      'Each tab keeps its 20 most recent downloads.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'string', description: 'Tab identifier' },
+        downloadId: { type: 'string', description: 'Return this download\'s content instead of the list' },
+      },
+      required: ['tabId'],
+    },
+  },
 ];
 
 /** Quick name → def lookup. */
@@ -511,7 +545,11 @@ export function buildRequest(name, args, ctx) {
         path: '/profiles',
         auth: 'accessKey',
         responseKind: 'json',
-        body: { ...(args.name ? { name: args.name } : {}), burner: args.burner === true },
+        body: {
+          ...(args.name ? { name: args.name } : {}),
+          burner: args.burner === true,
+          ...Object.fromEntries(['screen', 'os', 'locale', 'timezone'].filter(key => args[key]).map(key => [key, args[key]])),
+        },
       };
     case 'bwl_list_profiles':
       return { method: 'GET', path: '/profiles', auth: 'accessKey', responseKind: 'json' };
@@ -543,6 +581,24 @@ export function buildRequest(name, args, ctx) {
       return { method: 'POST', path: `/tabs/${args.tabId}/wait-reply`, auth: 'accessKey', responseKind: 'json', body: { ...without(args), userId }, meta: { pageContent: true } };
     case 'bwl_keep_open':
       return { method: 'POST', path: `/tabs/${args.tabId}/lifetime`, auth: 'accessKey', responseKind: 'json', body: { userId, keepOpen: args.keepOpen ?? true } };
+    case 'bwl_save_page':
+      return { method: 'POST', path: `/tabs/${args.tabId}/save-page`, auth: 'accessKey', responseKind: 'json', body: { userId } };
+    case 'bwl_downloads': {
+      const params = new URLSearchParams({ userId });
+      if (args.downloadId) {
+        params.set('downloadId', String(args.downloadId));
+        params.set('includeData', 'true');
+        params.set('maxBytes', String(DOWNLOAD_INLINE_MAX_BYTES));
+      }
+      return {
+        method: 'GET',
+        path: `/tabs/${args.tabId}/downloads?${params}`,
+        auth: 'accessKey',
+        responseKind: 'downloads',
+        // fileUrls point at whatever origin the agent reached bwl through.
+        meta: { tabId: String(args.tabId), userId, fileBase: ctx.publicBaseUrl || null },
+      };
+    }
     case 'bwl_tab_history':
       return { method: 'GET', path: `/tabs/${args.tabId}/history?${new URLSearchParams({ userId })}`, auth: 'accessKey', responseKind: 'json', meta: { pageContent: true } };
     case 'bwl_click':
@@ -770,6 +826,7 @@ export async function runTool(name, args, ctx, baseUrl, config) {
     name === 'bwl_import_cookies'
       ? await buildCookieRequest(args, ctx, config)
       : buildRequest(name, args, ctx);
+  if (spec.meta && 'fileBase' in spec.meta && !spec.meta.fileBase) spec.meta.fileBase = baseUrl;
   const payload = await fetchSpec(baseUrl, spec, config);
   return { spec, payload };
 }
@@ -799,7 +856,49 @@ function wrapUntrusted(text) {
   return `${UNTRUSTED_CONTENT_NOTICE}\n\n${text}`;
 }
 
+const DOWNLOAD_INLINE_MAX_BYTES = 10 * 1024 * 1024;
+const DOWNLOAD_TEXT_MAX_BYTES = 256 * 1024;
+const TEXT_MIME = /^(text\/|application\/(json|xml|javascript|x-ndjson|csv|yaml|x-yaml|toml)\b)|\+(json|xml)$/;
+
+function downloadFileUrl(base, meta, id) {
+  return `${base}/tabs/${encodeURIComponent(meta.tabId)}/downloads/${encodeURIComponent(id)}/file?${new URLSearchParams({ userId: meta.userId })}`;
+}
+
+/** bwl_downloads: a list with fileUrls, or one file's content as the best-fitting MCP block. */
+function adaptDownloads(spec, payload) {
+  const meta = spec.meta || {};
+  const base = String(meta.fileBase || '').replace(/\/+$/, '');
+  const downloads = (/** @type {any} */ (payload)?.downloads || []).map((d) => ({
+    id: d.id,
+    filename: d.suggestedFilename,
+    mimeType: d.mimeType,
+    bytes: d.bytes,
+    createdAt: d.createdAt,
+    ...(d.failure ? { failure: d.failure } : { fileUrl: downloadFileUrl(base, meta, d.id) }),
+    ...(d.dataSkipped ? { dataSkipped: d.dataSkipped } : {}),
+    ...(d.readError ? { readError: d.readError } : {}),
+    _data: d.dataBase64,
+  }));
+  const describe = (list) => list.map(({ _data, ...rest }) => rest);
+  if (!spec.path.includes('downloadId=')) {
+    const text = downloads.length
+      ? JSON.stringify({ downloads: describe(downloads) }, null, 2)
+      : 'No downloads in this tab yet. Click a download link or button first, then call bwl_downloads again.';
+    return [{ type: 'text', text }];
+  }
+  const [file] = downloads;
+  const info = { type: 'text', text: JSON.stringify(describe([file])[0], null, 2) };
+  if (!file?._data) return [info];
+  const mimeType = file.mimeType || 'application/octet-stream';
+  if (mimeType.startsWith('image/') && mimeType !== 'image/svg+xml') return [info, { type: 'image', data: file._data, mimeType }];
+  if ((TEXT_MIME.test(mimeType) || mimeType === 'image/svg+xml') && file.bytes <= DOWNLOAD_TEXT_MAX_BYTES) {
+    return [info, { type: 'text', text: wrapUntrusted(Buffer.from(file._data, 'base64').toString('utf8')) }];
+  }
+  return [info, { type: 'resource', resource: { uri: file.fileUrl, mimeType, blob: file._data } }];
+}
+
 export function adaptResponse(spec, payload) {
+  if (spec.responseKind === 'downloads') return adaptDownloads(spec, payload);
   if (spec.responseKind === 'image') {
     return [payload];
   }

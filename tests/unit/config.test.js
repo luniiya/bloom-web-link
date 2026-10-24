@@ -105,12 +105,13 @@ describe('loadConfig', () => {
   test('uses default timeout values when timeout environment variables are unset or invalid', () => {
     delete process.env.SESSION_TIMEOUT_MS;
     delete process.env.BROWSER_IDLE_TIMEOUT_MS;
-    expect(loadConfig().sessionTimeoutMs).toBe(600000);
+    // Sessions stay open until closed.
+    expect(loadConfig().sessionTimeoutMs).toBe(0);
     expect(loadConfig().browserIdleTimeoutMs).toBe(300000);
 
     process.env.SESSION_TIMEOUT_MS = 'not-a-number';
     process.env.BROWSER_IDLE_TIMEOUT_MS = 'not-a-number';
-    expect(loadConfig().sessionTimeoutMs).toBe(600000);
+    expect(loadConfig().sessionTimeoutMs).toBe(0);
     expect(loadConfig().browserIdleTimeoutMs).toBe(300000);
   });
 
@@ -203,10 +204,21 @@ describe('tab idle timeout configuration', () => {
     process.env.TAB_INACTIVITY_MS = '0';
     expect(loadConfig().tabInactivityMs).toBe(0);
   });
-  test('defaults to thirty minutes and accepts explicit positive timeouts', () => {
+  test('defaults to never closing idle tabs and accepts explicit positive timeouts', () => {
     delete process.env.TAB_INACTIVITY_MS;
-    expect(loadConfig().tabInactivityMs).toBe(1800000);
+    expect(loadConfig().tabInactivityMs).toBe(0);
     process.env.TAB_INACTIVITY_MS = '120000';
     expect(loadConfig().tabInactivityMs).toBe(120000);
+  });
+});
+
+describe('tab limit behaviour', () => {
+  test('refuses new tabs at the limit unless recycling is opted into', () => {
+    delete process.env.BWL_RECYCLE_TABS;
+    delete process.env.MAX_TABS_PER_SESSION;
+    expect(loadConfig()).toMatchObject({ recycleTabs: false, maxTabsPerSession: 25 });
+    process.env.BWL_RECYCLE_TABS = 'true';
+    expect(loadConfig().recycleTabs).toBe(true);
+    delete process.env.BWL_RECYCLE_TABS;
   });
 });

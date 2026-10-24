@@ -138,7 +138,9 @@
       "bwl_delete_profile",
       "bwl_import_cookies",
       "bwl_element_state",
-      "bwl_batch"
+      "bwl_batch",
+      "bwl_downloads",
+      "bwl_save_page"
     ]
   }
 }

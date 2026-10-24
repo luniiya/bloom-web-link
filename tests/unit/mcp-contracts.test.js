@@ -88,8 +88,8 @@ afterEach(() => {
 
 // --- Schema sanity ----------------------------------------------------------
 describe('TOOL_DEFS', () => {
-  test('exposes exactly 23 tools', () => {
-    expect(TOOL_DEFS).toHaveLength(23);
+  test('exposes exactly 25 tools', () => {
+    expect(TOOL_DEFS).toHaveLength(25);
   });
 
   test('every def has a unique name and a valid JSON-Schema object', () => {
@@ -143,6 +143,8 @@ describe('buildRequest', () => {
   test('create_profile body carries name and burner flag', () => {
     expect(buildRequest('bwl_create_profile', { name: 'shop' }, CTX).body).toEqual({ name: 'shop', burner: false });
     expect(buildRequest('bwl_create_profile', { burner: true }, CTX).body).toEqual({ burner: true });
+    expect(buildRequest('bwl_create_profile', { name: 'laptop', screen: '1366x768', os: 'windows', locale: 'fr-FR', timezone: 'Europe/Paris' }, CTX).body)
+      .toEqual({ name: 'laptop', burner: false, screen: '1366x768', os: 'windows', locale: 'fr-FR', timezone: 'Europe/Paris' });
   });
 
   test('interaction tools forward all non-routing args + userId in body', () => {
@@ -393,4 +395,43 @@ describe('chat reliability tool contracts', () => {
 test('create_tab supports blank tabs without rejecting the about scheme', () => {
   expect(buildRequest('bwl_create_tab', {}, CTX).body.url).toBeUndefined();
   expect(buildRequest('bwl_create_tab', { url: 'about:blank' }, CTX).body.url).toBeUndefined();
+});
+
+// --- bwl_downloads ----------------------------------------------------------
+describe('bwl_downloads', () => {
+  const ctx = { userId: 'agent-1', sessionKey: 'default', publicBaseUrl: 'http://bwl.local:9377' };
+  const entry = { id: 'd1', suggestedFilename: 'report.csv', mimeType: 'text/csv', bytes: 9, createdAt: 1 };
+
+  test('lists downloads with curl-able fileUrls on the agent-facing origin', () => {
+    const spec = buildRequest('bwl_downloads', { tabId: 't/1' }, ctx);
+    expect(spec).toMatchObject({ method: 'GET', path: '/tabs/t/1/downloads?userId=agent-1', responseKind: 'downloads' });
+    const [block] = adaptResponse(spec, { downloads: [entry, { id: 'd2', suggestedFilename: 'x.zip', failure: 'canceled' }] });
+    const { downloads } = JSON.parse(block.text);
+    expect(downloads[0]).toMatchObject({ id: 'd1', filename: 'report.csv', fileUrl: 'http://bwl.local:9377/tabs/t%2F1/downloads/d1/file?userId=agent-1' });
+    expect(downloads[1]).toMatchObject({ id: 'd2', failure: 'canceled' });
+    expect(downloads[1].fileUrl).toBeUndefined();
+  });
+
+  test('an empty list explains how to get a download', () => {
+    const spec = buildRequest('bwl_downloads', { tabId: 't1' }, ctx);
+    expect(adaptResponse(spec, { downloads: [] })[0].text).toMatch(/No downloads/);
+  });
+
+  test('downloadId fetches one file: text inline, images as images, the rest as a resource', () => {
+    const spec = buildRequest('bwl_downloads', { tabId: 't1', downloadId: 'd1' }, ctx);
+    expect(spec.path).toBe('/tabs/t1/downloads?userId=agent-1&downloadId=d1&includeData=true&maxBytes=10485760');
+    const text = adaptResponse(spec, { downloads: [{ ...entry, dataBase64: Buffer.from('a,b\n1,2\n').toString('base64') }] });
+    expect(text[1].type).toBe('text');
+    expect(text[1].text).toContain('a,b\n1,2');
+    const image = adaptResponse(spec, { downloads: [{ ...entry, mimeType: 'image/png', dataBase64: 'UE5H' }] });
+    expect(image[1]).toEqual({ type: 'image', data: 'UE5H', mimeType: 'image/png' });
+    const zip = adaptResponse(spec, { downloads: [{ ...entry, mimeType: 'application/zip', dataBase64: 'UEs=' }] });
+    expect(zip[1]).toMatchObject({ type: 'resource', resource: { mimeType: 'application/zip', blob: 'UEs=', uri: expect.stringContaining('/downloads/d1/file') } });
+  });
+
+  test('without a public origin, runTool falls back to the REST base URL', async () => {
+    globalThis.fetch = async () => ({ ok: true, headers: new Map(), json: async () => ({ downloads: [entry] }) });
+    const { spec, payload } = await runTool('bwl_downloads', { tabId: 't1' }, { userId: 'u' }, 'http://127.0.0.1:9377', { cookiesDir: os.tmpdir() });
+    expect(JSON.parse(adaptResponse(spec, payload)[0].text).downloads[0].fileUrl).toBe('http://127.0.0.1:9377/tabs/t1/downloads/d1/file?userId=u');
+  });
 });

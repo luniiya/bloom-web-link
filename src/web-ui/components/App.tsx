@@ -8,6 +8,7 @@ import type { ClosedEntry, State, TabRef } from "../types.ts";
 import { DetailView } from "./DetailView.tsx";
 import { GridView } from "./GridView.tsx";
 import type { ConnectInfo } from "./AgentPrompt.tsx";
+import type { ProfileInput } from "./ProfileDialog.tsx";
 import { Header } from "./Header.tsx";
 import { useActivity } from "./useActivity.ts";
 
@@ -115,10 +116,19 @@ export function App() {
     void refresh();
   }
 
-  async function createProfile(name: string): Promise<boolean> {
-    const response = await fetch("/api/profiles/create", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ name }) }).catch(() => null);
+  async function createProfile(input: ProfileInput): Promise<boolean> {
+    const response = await fetch("/api/profiles/create", { method: "POST", headers: authHeaders(true), body: JSON.stringify(input) }).catch(() => null);
+    const body = await response?.json().catch(() => null) as { name?: string; error?: string } | null;
+    const name = body?.name ?? input.name ?? "burner";
+    showNotice(response?.ok ? `Created profile ${name}` : `Could not create profile${input.name ? ` ${input.name}` : ""}${body?.error ? `: ${body.error}` : ""}`);
+    void refresh();
+    return !!response?.ok;
+  }
+
+  async function regenerateProfile(name: string, { screen, os, locale, timezone }: ProfileInput): Promise<boolean> {
+    const response = await fetch("/api/profiles/fingerprint", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ profile: name, screen, os, locale, timezone }) }).catch(() => null);
     const body = await response?.json().catch(() => null) as { error?: string } | null;
-    showNotice(response?.ok ? `Created profile ${name}` : `Could not create profile ${name}${body?.error ? `: ${body.error}` : ""}`);
+    showNotice(response?.ok ? `New fingerprint for ${name}` : `Could not change ${name}'s fingerprint${body?.error ? `: ${body.error}` : ""}`);
     void refresh();
     return !!response?.ok;
   }
@@ -134,7 +144,7 @@ export function App() {
     <>
       <Header theme={theme} onThemeChange={changeTheme} authHidden={authHidden} onAuth={askForKey} connect={connect} profiles={(view?.state.profiles ?? []).map((p) => p.name)} />
       <main>
-        <GridView hidden={shown.kind !== "grid"} connError={connError} state={view?.state ?? null} open={view?.open ?? []} closed={view?.closed ?? []} onDeleteProfile={(name) => void deleteProfile(name)} onCreateProfile={createProfile} />
+        <GridView hidden={shown.kind !== "grid"} connError={connError} state={view?.state ?? null} open={view?.open ?? []} closed={view?.closed ?? []} onDeleteProfile={(name) => void deleteProfile(name)} onCreateProfile={createProfile} onRegenerateProfile={regenerateProfile} />
         <section id="detail-view" hidden={shown.kind !== "detail"}>
           {view && shown.kind === "detail" && (
             <DetailView

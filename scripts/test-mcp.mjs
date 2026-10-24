@@ -33,6 +33,8 @@ const EXPECTED_TOOLS = [
   'bwl_create_profile',
   'bwl_list_profiles',
   'bwl_delete_profile',
+  'bwl_downloads',
+  'bwl_save_page',
 ];
 
 let failures = 0;

@@ -78,6 +78,11 @@ RUN case "${ARCH:-$TARGETARCH}" in \
     && echo "{\"version\":\"${CAMOUFOX_VERSION}\",\"release\":\"${CAMOUFOX_RELEASE}\"}" > /root/.cache/camoufox/version.json \
     && test -f /root/.cache/camoufox/camoufox-bin && echo "Camoufox installed successfully"
 
+# GeoLite2 City database for Camoufox's geoip: profiles take their timezone and
+# geolocation from their public IP. camoufox-js would otherwise download it
+# (~60MB) on the first profile launch after every container recreate.
+RUN curl -fL -o /root/.cache/camoufox/GeoLite2-City.mmdb "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"
+
 # yt-dlp is installed and verified by the enabled YouTube plugin hook below.
 
 WORKDIR /app

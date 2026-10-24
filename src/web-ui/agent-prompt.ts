@@ -45,7 +45,9 @@ For a throwaway session that must not touch any saved logins, use \`profile: "bu
 2. \`bwl_snapshot({ tabId })\` -> accessibility tree with element refs (\`e1\`, \`e2\`, ...). Pass \`includeScreenshot: false\` when you don't need the image. For just reading page text, \`bwl_read_text\` is much cheaper.
 3. Interact by ref: \`bwl_click\`, \`bwl_type\`, \`bwl_select\`, \`bwl_scroll\`, \`bwl_navigate\`. Use \`bwl_batch\` for several steps in one call, and \`bwl_wait\` for slow pages.
 4. Snapshot again after anything that changes the page; refs from an old snapshot go stale.
-5. \`bwl_close_tab({ tabId })\` when you're done, unless the user wants it kept (\`bwl_keep_open\`).
+5. Tabs stay open until closed, so \`bwl_close_tab({ tabId })\` when you're done, unless the user wants the tab kept.
+
+Files: \`bwl_save_page({ tabId })\` saves the current page (like Ctrl+S; a PDF or other document is saved as the original file). Downloads a click triggers are captured too. \`bwl_downloads({ tabId })\` lists them, and \`bwl_downloads({ tabId, downloadId })\` returns the file contents.
 
 The user can watch and take over every tab live in the dashboard. If you hit a captcha or a login you can't complete, ask them to finish it there, then continue.
 

@@ -32,7 +32,15 @@ function cors(response: Response): Response {
   return new Response(response.body, { status: response.status, headers });
 }
 
-function createProtocolServer(config: ContainerConfig, userId: string): Server {
+/** Origin the agent used to reach /mcp, so download fileUrls work from its side. */
+function publicBaseUrl(request: Request, config: ContainerConfig): string {
+  if (config.publicMcpUrl) return config.publicMcpUrl.replace(/\/mcp\/?$/, "");
+  const url = new URL(request.url);
+  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https" ? "https:" : url.protocol;
+  return `${proto}//${url.host}`;
+}
+
+function createProtocolServer(config: ContainerConfig, userId: string, baseForAgent: string): Server {
   const server = new Server(
     { name: "bloom-web-link", version: config.packageVersion },
     {
@@ -64,7 +72,7 @@ function createProtocolServer(config: ContainerConfig, userId: string): Server {
       const { spec, payload } = await runTool(
         name,
         args || {},
-        { userId, sessionKey: "default" },
+        { userId, sessionKey: "default", publicBaseUrl: baseForAgent },
         baseUrl,
         { ...toolConfig, signal: extra.signal },
       );
@@ -114,7 +122,7 @@ export function createMcpHandler(config: ContainerConfig) {
       transport.onclose = () => {
         if (transport?.sessionId) transports.delete(transport.sessionId);
       };
-      await createProtocolServer(config, userId).connect(transport);
+      await createProtocolServer(config, userId, publicBaseUrl(request, config)).connect(transport);
     }
 
     if (!transport) {

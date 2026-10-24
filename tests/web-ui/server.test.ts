@@ -167,8 +167,18 @@ describe("/api/profiles/create", () => {
   test("creates a named or burner profile in the core", async () => {
     await post(open, "/api/profiles/create", { name: "shopping" });
     expect(lastSeen()).toMatchObject({ method: "POST", path: "/profiles", body: { name: "shopping", burner: false } });
-    await post(open, "/api/profiles/create", { burner: true });
-    expect(lastSeen()).toMatchObject({ method: "POST", path: "/profiles", body: { burner: true } });
+    await post(open, "/api/profiles/create", { burner: true, screen: "1366x768" });
+    expect(lastSeen()).toMatchObject({ method: "POST", path: "/profiles", body: { burner: true, screen: "1366x768" } });
+  });
+
+  test("re-rolls a profile's fingerprint in the core", async () => {
+    await post(open, "/api/profiles/fingerprint", { profile: "main", screen: "1920x1080", os: "windows", locale: "fr-FR", timezone: "Europe/Paris" });
+    expect(lastSeen()).toMatchObject({ method: "POST", path: "/profiles/main/fingerprint", body: { screen: "1920x1080", os: "windows", locale: "fr-FR", timezone: "Europe/Paris" } });
+    expect((await post(open, "/api/profiles/fingerprint", { profile: "main", os: 5 })).status).toBe(400);
+    const count = seen.length;
+    expect((await post(open, "/api/profiles/fingerprint", {})).status).toBe(400);
+    expect((await post(secured, "/api/profiles/fingerprint", { profile: "main" })).status).toBe(401);
+    expect(seen.length).toBe(count);
   });
 
   test("requires a name (or burner) and authorization", async () => {
